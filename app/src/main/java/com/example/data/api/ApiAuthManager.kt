@@ -1,59 +1,34 @@
-
 package com.example.data.api
 
 import okhttp3.Interceptor
 import okhttp3.Response
-import java.util.concurrent.atomic.AtomicInteger
 
 class ApiAuthManager(
     private val keys: List<String> = ApiConstants.API_KEYS
 ) {
-    private val activeIndex = AtomicInteger(0)
+    private val primaryKey: String
 
     init {
-        require(keys.isNotEmpty()) {
-            "API keys configuration must not be empty"
-        }
+        primaryKey = keys.firstOrNull()
+            ?.takeIf { it.isNotBlank() }
+            ?: throw IllegalStateException(
+                "API key belum dikonfigurasi."
+            )
     }
 
-    fun getCurrentKeyIndex(): Int =
-        activeIndex.get().coerceIn(0, keys.lastIndex)
+    fun getCurrentKeyIndex(): Int = 0
 
-    fun getKeyAt(index: Int): String =
-        keys[index.coerceIn(0, keys.lastIndex)]
+    fun getKeyAt(index: Int): String = primaryKey
 
-    fun keyCount(): Int = keys.size
+    fun keyCount(): Int = 1
 
     @Synchronized
     fun nextKeyIndexOnAuthFailure(
         failedIndex: Int,
         triedIndices: Set<Int>
-    ): Int? {
-        if (triedIndices.size >= keys.size) return null
+    ): Int? = null
 
-        if (activeIndex.get() == failedIndex) {
-            activeIndex.set((failedIndex + 1) % keys.size)
-        }
-
-        val current = activeIndex.get()
-
-        if (current !in triedIndices) return current
-
-        for (step in 1..keys.size) {
-            val candidate = (failedIndex + step) % keys.size
-
-            if (candidate !in triedIndices) {
-                activeIndex.set(candidate)
-                return candidate
-            }
-        }
-
-        return null
-    }
-
-    fun resetToPrimary() {
-        activeIndex.set(0)
-    }
+    fun resetToPrimary() = Unit
 }
 
 class ApiShortInterceptor(
@@ -69,53 +44,29 @@ class ApiShortInterceptor(
 
     override fun intercept(chain: Interceptor.Chain): Response {
         val originalRequest = chain.request()
-        val triedKeyIndices = HashSet<Int>(authManager.keyCount())
 
-        var keyIndex = authManager.getCurrentKeyIndex()
-        var gatewayRetried = false
+        val signedRequest = originalRequest.newBuilder()
+            .header(
+                ApiConstants.HEADER_API_KEY,
+                authManager.getKeyAt(0)
+            )
+            .header(
+                ApiConstants.HEADER_ACCEPT,
+                ApiConstants.ACCEPT_JSON
+            )
+            .build()
 
-        while (true) {
-            triedKeyIndices.add(keyIndex)
+        var response = chain.proceed(signedRequest)
 
-            val apiKey = authManager.getKeyAt(keyIndex)
-
-            val signedRequest = originalRequest.newBuilder()
-                .header(ApiConstants.HEADER_API_KEY, apiKey)
-                .header(ApiConstants.HEADER_ACCEPT, ApiConstants.ACCEPT_JSON)
-                .build()
-
-            val response = chain.proceed(signedRequest)
-            val code = response.code
-
-            // Ganti key jika autentikasi gagal atau kuota key terkena limit.
-            if (code == 401 || code == 403 || code == 429) {
-                val nextIndex = authManager.nextKeyIndexOnAuthFailure(
-                    keyIndex,
-                    triedKeyIndices
-                )
-
-                if (nextIndex != null) {
-                    response.close()
-                    keyIndex = nextIndex
-                    continue
-                }
-
-                // Semua key sudah dicoba.
-                return response
-            }
-
-            // Gangguan gateway: coba sekali lagi dengan key yang sama.
-            if (
-                (code == 502 || code == 503 || code == 504) &&
-                !gatewayRetried
-            ) {
-                gatewayRetried = true
-                response.close()
-                sleepFn(800L)
-                continue
-            }
-
-            return response
+        if (response.code == 502 ||
+            response.code == 503 ||
+            response.code == 504
+        ) {
+            response.close()
+            sleepFn(800L)
+            response = chain.proceed(signedRequest)
         }
+
+        return response
     }
 }
