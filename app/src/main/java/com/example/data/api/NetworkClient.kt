@@ -20,7 +20,6 @@ object NetworkClient {
             .build()
     }
 
-    // Separate OkHttpClient for video CDN probing and streaming (never sends X-API-Key to CDN)
     val mediaOkHttpClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS)
@@ -45,11 +44,22 @@ object NetworkClient {
             .build()
     }
 
+    private val dramaWaveRetrofit: Retrofit by lazy {
+        Retrofit.Builder()
+            .baseUrl(ApiConstants.DRAMAWAVE_BASE_URL)
+            .client(okHttpClient)
+            .build()
+    }
+
     val meloloService: MeloloApiService by lazy {
         meloloRetrofit.create(MeloloApiService::class.java)
     }
 
     val dramaBoxService: DramaBoxApiService by lazy {
         dramaBoxRetrofit.create(DramaBoxApiService::class.java)
+    }
+
+    val dramaWaveService: DramaWaveApiService by lazy {
+        dramaWaveRetrofit.create(DramaWaveApiService::class.java)
     }
 }
