@@ -1,4 +1,3 @@
-
 package com.example.ads
 
 import android.app.Activity
@@ -48,9 +47,7 @@ class StartIoInterstitialGateway : InterstitialAdGateway {
             }
             .init()
 
-        // Aktifkan iklan percobaan selama pengujian.
         StartAppSDK.setTestAdsEnabled(true)
-
         StartAppAd.disableAutoInterstitial()
     }
 
@@ -82,9 +79,7 @@ class StartIoInterstitialGateway : InterstitialAdGateway {
                                 onDisplayed()
                             }
 
-                            override fun adClicked(ad: Ad) {
-                                // Klik ditangani oleh SDK.
-                            }
+                            override fun adClicked(ad: Ad) = Unit
 
                             override fun adNotDisplayed(ad: Ad) {
                                 onNotDisplayed()
@@ -236,19 +231,15 @@ class InterstitialAdController(
     }
 
     /**
-     * Dipanggil ketika video episode benar-benar selesai.
-     * Tidak dipanggil ketika video dijeda atau pengguna kembali.
+     * Jalur bersama untuk semua perpindahan episode.
+     * Jika iklan tidak tersedia, perpindahan tetap dilanjutkan.
      */
-    fun onEpisodeEnded(
+    fun requestEpisodeTransition(
         context: Context,
         sessionToken: Long,
-        hasNextEpisode: Boolean,
-        onProceedNextEpisode: () -> Unit
+        onProceed: () -> Unit
     ) {
-        if (!hasNextEpisode) return
-
         if (sessionToken != activeSessionToken) return
-
         if (isAdShowing || isAdProcessing) return
 
         isAdProcessing = true
@@ -256,9 +247,16 @@ class InterstitialAdController(
         val adToShow = preloadedAd
 
         if (adToShow == null || !isAdReady) {
-            isAdProcessing = false
-            isAdShowing = false
-            onProceedNextEpisode()
+            mainPoster(Runnable {
+                if (sessionToken != activeSessionToken) {
+                    isAdProcessing = false
+                    return@Runnable
+                }
+
+                isAdProcessing = false
+                isAdShowing = false
+                onProceed()
+            })
             return
         }
 
@@ -271,13 +269,13 @@ class InterstitialAdController(
         fun finishTransition() {
             mainPoster(Runnable {
                 if (completed) return@Runnable
-
                 completed = true
+
                 isAdShowing = false
                 isAdProcessing = false
 
                 if (sessionToken == activeSessionToken) {
-                    onProceedNextEpisode()
+                    onProceed()
                     preloadIfNeeded(context)
                 }
             })
@@ -287,7 +285,9 @@ class InterstitialAdController(
             adToShow.show(
                 onDisplayed = {
                     mainPoster(Runnable {
-                        isAdShowing = true
+                        if (sessionToken == activeSessionToken) {
+                            isAdShowing = true
+                        }
                     })
                 },
                 onHidden = {
@@ -304,6 +304,24 @@ class InterstitialAdController(
         if (!shown) {
             finishTransition()
         }
+    }
+
+    /**
+     * Kompatibilitas untuk pemanggilan auto-next yang lama.
+     */
+    fun onEpisodeEnded(
+        context: Context,
+        sessionToken: Long,
+        hasNextEpisode: Boolean,
+        onProceedNextEpisode: () -> Unit
+    ) {
+        if (!hasNextEpisode) return
+
+        requestEpisodeTransition(
+            context = context,
+            sessionToken = sessionToken,
+            onProceed = onProceedNextEpisode
+        )
     }
 }
 
