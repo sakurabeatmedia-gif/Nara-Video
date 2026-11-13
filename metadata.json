@@ -1,0 +1,6 @@
+{
+  "name": "NARA",
+  "description": "Aplikasi streaming drama pendek (dracin) modern dengan pengalaman menonton premium.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
