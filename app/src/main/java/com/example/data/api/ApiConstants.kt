@@ -1,3 +1,4 @@
+
 package com.example.data.api
 
 object ApiConstants {
@@ -5,9 +6,9 @@ object ApiConstants {
     const val DRAMABOX_BASE_URL = "https://apishort.com/v1/dramabox/api/dramabox/"
 
     val API_KEYS: List<String> = listOf(
-        "vbs_cbb6e561d49018a8ed3f1f55bfd0e6662f157f753f7ca08a",
-        "vbs_7dd91a0c2f823aac18c1b08883cd6d0c5cced4e903b7cc62",
-        "vbs_0d7e1b255475439d9d808f700e60d87182faef0054d21020"
+        "vbs_9ed0b6f5c576190b1f7bf32de09f705559933d757685b968",
+        "vbs_18bcfc98d4f1e813ffbcedeb62ec23b6b9743605e96a7520",
+        "vbs_776c1aa51441d41d189b4e0e5bcf0551ac3ef616f853e6ef"
     )
 
     const val HEADER_API_KEY = "X-API-Key"
