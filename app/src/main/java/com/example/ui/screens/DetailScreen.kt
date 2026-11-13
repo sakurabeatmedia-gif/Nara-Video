@@ -60,14 +60,12 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.model.Drama
-import com.example.model.Episode
 import com.example.ui.components.ErrorStateView
+import com.example.ui.components.ProviderLabel
 import com.example.ui.theme.NaraBackground
-import com.example.ui.theme.NaraBorder
 import com.example.ui.theme.NaraGold
 import com.example.ui.theme.NaraPrimary
 import com.example.ui.theme.NaraPrimaryDark
-import com.example.ui.theme.NaraSurface
 import com.example.ui.theme.NaraSurfaceVariant
 import com.example.ui.theme.NaraTextPrimary
 import com.example.ui.theme.NaraTextSecondary
@@ -100,9 +98,16 @@ fun DetailScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        CircularProgressIndicator(color = NaraPrimary, strokeWidth = 3.dp)
+                        CircularProgressIndicator(
+                            color = NaraPrimary,
+                            strokeWidth = 3.dp
+                        )
                         Spacer(modifier = Modifier.height(16.dp))
-                        Text(text = "Memuat detail drama...", color = NaraTextSecondary, fontSize = 13.sp)
+                        Text(
+                            text = "Memuat detail drama...",
+                            color = NaraTextSecondary,
+                            fontSize = 13.sp
+                        )
                     }
                 }
             }
@@ -123,24 +128,27 @@ fun DetailScreen(
                 val dramaDetail = detailState.detail
                 val drama = dramaDetail.drama
                 val scrollState = rememberScrollState()
-                var isSynopsisExpanded by remember { mutableStateOf(false) }
+                var isSynopsisExpanded by remember {
+                    mutableStateOf(false)
+                }
 
-                val startEpisode = detailState.lastHistory?.lastEpisode ?: 1
+                val startEpisode =
+                    detailState.lastHistory?.lastEpisode ?: 1
 
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
                         .verticalScroll(scrollState)
                 ) {
-                    // Hero Backdrop & Poster Area
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(340.dp)
                     ) {
-                        // Blurred / Cover backdrop
                         AsyncImage(
-                            model = ImageRequest.Builder(LocalContext.current)
+                            model = ImageRequest.Builder(
+                                LocalContext.current
+                            )
                                 .data(drama.cover)
                                 .crossfade(true)
                                 .build(),
@@ -149,7 +157,6 @@ fun DetailScreen(
                             modifier = Modifier.fillMaxSize()
                         )
 
-                        // Multi-stop gradient
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
@@ -164,7 +171,6 @@ fun DetailScreen(
                                 )
                         )
 
-                        // Back Button
                         IconButton(
                             onClick = onBack,
                             modifier = Modifier
@@ -172,7 +178,9 @@ fun DetailScreen(
                                 .padding(12.dp)
                                 .size(40.dp)
                                 .clip(CircleShape)
-                                .background(Color.Black.copy(alpha = 0.5f))
+                                .background(
+                                    Color.Black.copy(alpha = 0.5f)
+                                )
                                 .testTag("detail_back_button")
                         ) {
                             Icon(
@@ -182,12 +190,14 @@ fun DetailScreen(
                             )
                         }
 
-                        // Poster thumbnail and basic info overlay
                         Row(
                             modifier = Modifier
                                 .align(Alignment.BottomStart)
                                 .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                                .padding(
+                                    horizontal = 16.dp,
+                                    vertical = 12.dp
+                                ),
                             verticalAlignment = Alignment.Bottom
                         ) {
                             Box(
@@ -198,7 +208,9 @@ fun DetailScreen(
                                     .background(NaraSurfaceVariant)
                             ) {
                                 AsyncImage(
-                                    model = ImageRequest.Builder(LocalContext.current)
+                                    model = ImageRequest.Builder(
+                                        LocalContext.current
+                                    )
                                         .data(drama.cover)
                                         .crossfade(true)
                                         .build(),
@@ -210,7 +222,9 @@ fun DetailScreen(
 
                             Spacer(modifier = Modifier.width(16.dp))
 
-                            Column(modifier = Modifier.weight(1f)) {
+                            Column(
+                                modifier = Modifier.weight(1f)
+                            ) {
                                 Text(
                                     text = drama.title,
                                     color = NaraTextPrimary,
@@ -220,23 +234,35 @@ fun DetailScreen(
                                     overflow = TextOverflow.Ellipsis
                                 )
 
-                                Spacer(modifier = Modifier.height(6.dp))
+                                Spacer(modifier = Modifier.height(7.dp))
 
-                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                ProviderLabel(
+                                    provider = drama.provider
+                                )
+
+                                Spacer(modifier = Modifier.height(7.dp))
+
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
                                     Icon(
                                         imageVector = Icons.Default.Star,
                                         contentDescription = null,
                                         tint = NaraGold,
                                         modifier = Modifier.size(14.dp)
                                     )
+
                                     Spacer(modifier = Modifier.width(4.dp))
+
                                     Text(
                                         text = drama.rating,
                                         color = NaraTextPrimary,
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.Bold
                                     )
+
                                     Spacer(modifier = Modifier.width(12.dp))
+
                                     Text(
                                         text = "${dramaDetail.episodes.size} Episode",
                                         color = NaraPrimary,
@@ -247,6 +273,7 @@ fun DetailScreen(
 
                                 if (dramaDetail.channel.isNotEmpty()) {
                                     Spacer(modifier = Modifier.height(4.dp))
+
                                     Text(
                                         text = "Kanal: ${dramaDetail.channel}",
                                         color = NaraTextSecondary,
@@ -257,13 +284,11 @@ fun DetailScreen(
                         }
                     }
 
-                    // Content Body
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(16.dp)
                     ) {
-                        // Genre chips
                         if (drama.categories.isNotEmpty()) {
                             FlowRow(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -275,7 +300,10 @@ fun DetailScreen(
                                         modifier = Modifier
                                             .clip(RoundedCornerShape(6.dp))
                                             .background(NaraSurfaceVariant)
-                                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                                            .padding(
+                                                horizontal = 10.dp,
+                                                vertical = 4.dp
+                                            )
                                     ) {
                                         Text(
                                             text = cat,
@@ -286,16 +314,18 @@ fun DetailScreen(
                                     }
                                 }
                             }
+
                             Spacer(modifier = Modifier.height(14.dp))
                         }
 
-                        // Main Action Buttons
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
                             Button(
-                                onClick = { onPlayEpisode(drama, startEpisode) },
+                                onClick = {
+                                    onPlayEpisode(drama, startEpisode)
+                                },
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = NaraPrimary,
                                     contentColor = Color.White
@@ -311,33 +341,59 @@ fun DetailScreen(
                                     contentDescription = null,
                                     modifier = Modifier.size(20.dp)
                                 )
+
                                 Spacer(modifier = Modifier.width(8.dp))
+
                                 Text(
-                                    text = if (detailState.lastHistory != null) "Lanjutkan Ep $startEpisode" else "Tonton Sekarang",
+                                    text = if (detailState.lastHistory != null) {
+                                        "Lanjutkan Ep $startEpisode"
+                                    } else {
+                                        "Tonton Sekarang"
+                                    },
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
 
                             OutlinedButton(
-                                onClick = { onToggleFavorite(drama) },
+                                onClick = {
+                                    onToggleFavorite(drama)
+                                },
                                 shape = RoundedCornerShape(10.dp),
                                 colors = ButtonDefaults.outlinedButtonColors(
-                                    contentColor = if (detailState.isFavorite) NaraPrimary else NaraTextPrimary
+                                    contentColor = if (detailState.isFavorite) {
+                                        NaraPrimary
+                                    } else {
+                                        NaraTextPrimary
+                                    }
                                 ),
                                 modifier = Modifier
                                     .height(46.dp)
                                     .testTag("detail_favorite_button")
                             ) {
                                 Icon(
-                                    imageVector = if (detailState.isFavorite) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                                    imageVector = if (detailState.isFavorite) {
+                                        Icons.Default.Bookmark
+                                    } else {
+                                        Icons.Default.BookmarkBorder
+                                    },
                                     contentDescription = null,
-                                    tint = if (detailState.isFavorite) NaraPrimary else NaraTextSecondary,
+                                    tint = if (detailState.isFavorite) {
+                                        NaraPrimary
+                                    } else {
+                                        NaraTextSecondary
+                                    },
                                     modifier = Modifier.size(18.dp)
                                 )
+
                                 Spacer(modifier = Modifier.width(6.dp))
+
                                 Text(
-                                    text = if (detailState.isFavorite) "Tersimpan" else "Favorit",
+                                    text = if (detailState.isFavorite) {
+                                        "Tersimpan"
+                                    } else {
+                                        "Favorit"
+                                    },
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.SemiBold
                                 )
@@ -346,7 +402,6 @@ fun DetailScreen(
 
                         Spacer(modifier = Modifier.height(20.dp))
 
-                        // Synopsis Section
                         if (drama.synopsis.isNotEmpty()) {
                             Text(
                                 text = "Sinopsis",
@@ -354,30 +409,44 @@ fun DetailScreen(
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.Bold
                             )
+
                             Spacer(modifier = Modifier.height(6.dp))
+
                             Text(
                                 text = drama.synopsis,
                                 color = NaraTextSecondary,
                                 fontSize = 13.sp,
                                 lineHeight = 19.sp,
-                                maxLines = if (isSynopsisExpanded) Int.MAX_VALUE else 3,
+                                maxLines = if (isSynopsisExpanded) {
+                                    Int.MAX_VALUE
+                                } else {
+                                    3
+                                },
                                 overflow = TextOverflow.Ellipsis
                             )
+
                             if (drama.synopsis.length > 120) {
                                 Text(
-                                    text = if (isSynopsisExpanded) "Sembunyikan" else "Baca Selengkapnya",
+                                    text = if (isSynopsisExpanded) {
+                                        "Sembunyikan"
+                                    } else {
+                                        "Baca Selengkapnya"
+                                    },
                                     color = NaraPrimary,
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold,
                                     modifier = Modifier
-                                        .clickable { isSynopsisExpanded = !isSynopsisExpanded }
+                                        .clickable {
+                                            isSynopsisExpanded =
+                                                !isSynopsisExpanded
+                                        }
                                         .padding(vertical = 4.dp)
                                 )
                             }
+
                             Spacer(modifier = Modifier.height(20.dp))
                         }
 
-                        // Episodes Header
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -389,6 +458,7 @@ fun DetailScreen(
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.Bold
                             )
+
                             Text(
                                 text = "${dramaDetail.episodes.size} Episode Tersedia",
                                 color = NaraTextSecondary,
@@ -398,7 +468,6 @@ fun DetailScreen(
 
                         Spacer(modifier = Modifier.height(12.dp))
 
-                        // Grid of Episode buttons (5 columns)
                         val episodes = dramaDetail.episodes
                         val chunkedEpisodes = episodes.chunked(5)
 
@@ -412,7 +481,9 @@ fun DetailScreen(
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     rowEps.forEach { ep ->
-                                        val isCurrentWatched = detailState.lastHistory?.lastEpisode == ep.episodeNum
+                                        val isCurrentWatched =
+                                            detailState.lastHistory?.lastEpisode ==
+                                                ep.episodeNum
 
                                         Box(
                                             modifier = Modifier
@@ -420,27 +491,45 @@ fun DetailScreen(
                                                 .height(44.dp)
                                                 .clip(RoundedCornerShape(8.dp))
                                                 .background(
-                                                    when {
-                                                        isCurrentWatched -> NaraPrimaryDark
-                                                        else -> NaraSurfaceVariant
+                                                    if (isCurrentWatched) {
+                                                        NaraPrimaryDark
+                                                    } else {
+                                                        NaraSurfaceVariant
                                                     }
                                                 )
-                                                .clickable { onPlayEpisode(drama, ep.episodeNum) }
-                                                .testTag("episode_button_${ep.episodeNum}"),
+                                                .clickable {
+                                                    onPlayEpisode(
+                                                        drama,
+                                                        ep.episodeNum
+                                                    )
+                                                }
+                                                .testTag(
+                                                    "episode_button_${ep.episodeNum}"
+                                                ),
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Text(
                                                 text = "${ep.episodeNum}",
-                                                color = if (isCurrentWatched) Color.White else NaraTextPrimary,
+                                                color = if (isCurrentWatched) {
+                                                    Color.White
+                                                } else {
+                                                    NaraTextPrimary
+                                                },
                                                 fontSize = 13.sp,
-                                                fontWeight = if (isCurrentWatched) FontWeight.Bold else FontWeight.Medium
+                                                fontWeight = if (isCurrentWatched) {
+                                                    FontWeight.Bold
+                                                } else {
+                                                    FontWeight.Medium
+                                                }
                                             )
                                         }
                                     }
-                                    // Filler for incomplete rows
+
                                     if (rowEps.size < 5) {
                                         repeat(5 - rowEps.size) {
-                                            Spacer(modifier = Modifier.weight(1f))
+                                            Spacer(
+                                                modifier = Modifier.weight(1f)
+                                            )
                                         }
                                     }
                                 }
