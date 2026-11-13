@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.db.FavoriteDramaEntity
 import com.example.model.Drama
+import com.example.model.DramaProvider
 import com.example.ui.components.DramaPosterCard
 import com.example.ui.theme.NaraBackground
 import com.example.ui.theme.NaraPrimary
@@ -125,12 +126,15 @@ fun FavoriteScreen(
                 verticalArrangement = Arrangement.spacedBy(14.dp),
                 modifier = Modifier.fillMaxSize()
             ) {
-                items(favoritesList, key = { it.dramaId }) { item ->
+                items(favoritesList, key = { "${it.provider}:${it.dramaId}" }) { item ->
+                    val provider = runCatching { DramaProvider.valueOf(item.provider) }
+                        .getOrDefault(DramaProvider.MELOLO)
                     val drama = Drama(
                         id = item.dramaId,
                         title = item.title,
                         cover = item.cover,
-                        totalEpisodes = item.totalEpisodes
+                        totalEpisodes = item.totalEpisodes,
+                        provider = provider
                     )
 
                     DramaPosterCard(

@@ -66,7 +66,6 @@ fun HomeScreen(
             ) {
                 ErrorStateView(
                     message = homeState.errorMessage,
-                    errorCode = homeState.errorCode,
                     onRetry = onRetry
                 )
             }
@@ -91,7 +90,6 @@ fun HomeScreen(
                 if (homeState.errorMessage != null && homeState.heroBanners.isNotEmpty()) {
                     ErrorStateView(
                         message = homeState.errorMessage,
-                        errorCode = homeState.errorCode,
                         onRetry = onRetry,
                         modifier = Modifier.padding(16.dp)
                     )

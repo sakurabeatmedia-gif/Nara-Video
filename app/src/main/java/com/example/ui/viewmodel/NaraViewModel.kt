@@ -3,14 +3,15 @@ package com.example.ui.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.data.api.ApiKeyStore
+import com.example.ads.StartIoAdManager
 import com.example.data.db.FavoriteDramaEntity
 import com.example.data.db.NaraDatabase
 import com.example.data.db.WatchHistoryEntity
-import com.example.data.repository.ApiException
+import com.example.data.repository.MergedHomeCatalog
 import com.example.data.repository.NaraRepository
 import com.example.model.Drama
 import com.example.model.DramaDetail
+import com.example.model.DramaProvider
 import com.example.model.VideoSource
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -27,6 +28,11 @@ enum class NaraTab(val label: String) {
     PROFILE("Profil")
 }
 
+data class DramaTarget(
+    val provider: DramaProvider,
+    val dramaId: String
+)
+
 data class HomeUiState(
     val isLoading: Boolean = false,
     val heroBanners: List<Drama> = emptyList(),
@@ -36,8 +42,7 @@ data class HomeUiState(
     val romantis: List<Drama> = emptyList(),
     val keluarga: List<Drama> = emptyList(),
     val pilihan: List<Drama> = emptyList(),
-    val errorMessage: String? = null,
-    val errorCode: Int? = null
+    val errorMessage: String? = null
 )
 
 data class ExploreUiState(
@@ -49,6 +54,7 @@ data class ExploreUiState(
 )
 
 data class DetailUiState(
+    val provider: DramaProvider = DramaProvider.MELOLO,
     val dramaId: String = "",
     val isLoading: Boolean = false,
     val detail: DramaDetail? = null,
@@ -76,8 +82,8 @@ class NaraViewModel(application: Application) : AndroidViewModel(application) {
     private val _currentTab = MutableStateFlow(NaraTab.HOME)
     val currentTab: StateFlow<NaraTab> = _currentTab.asStateFlow()
 
-    private val _selectedDramaId = MutableStateFlow<String?>(null)
-    val selectedDramaId: StateFlow<String?> = _selectedDramaId.asStateFlow()
+    private val _selectedDrama = MutableStateFlow<DramaTarget?>(null)
+    val selectedDrama: StateFlow<DramaTarget?> = _selectedDrama.asStateFlow()
 
     private val _playerState = MutableStateFlow<PlayerUiState?>(null)
     val playerState: StateFlow<PlayerUiState?> = _playerState.asStateFlow()
@@ -99,35 +105,8 @@ class NaraViewModel(application: Application) : AndroidViewModel(application) {
     val historyList: StateFlow<List<WatchHistoryEntity>> = repository.getAllHistory()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    private val _hasCustomApiKey = MutableStateFlow(false)
-    val hasCustomApiKey: StateFlow<Boolean> = _hasCustomApiKey.asStateFlow()
-
-    private val _maskedCustomApiKey = MutableStateFlow("")
-    val maskedCustomApiKey: StateFlow<String> = _maskedCustomApiKey.asStateFlow()
-
     init {
-        ApiKeyStore.init(application)
-        refreshApiKeyState()
-        loadHomeData()
-    }
-
-    private fun refreshApiKeyState() {
-        _hasCustomApiKey.value = ApiKeyStore.hasCustomApiKey()
-        _maskedCustomApiKey.value = ApiKeyStore.getMaskedCustomApiKey()
-    }
-
-    fun saveCustomApiKey(apiKey: String) {
-        val clean = apiKey.trim()
-        if (clean.isNotEmpty()) {
-            ApiKeyStore.saveCustomApiKey(clean)
-            refreshApiKeyState()
-            loadHomeData()
-        }
-    }
-
-    fun resetCustomApiKey() {
-        ApiKeyStore.clearCustomApiKey()
-        refreshApiKeyState()
+        StartIoAdManager.controller.initialize(application)
         loadHomeData()
     }
 
@@ -138,25 +117,28 @@ class NaraViewModel(application: Application) : AndroidViewModel(application) {
     // --- HOME ACTIONS ---
     fun loadHomeData() {
         viewModelScope.launch {
-            _homeState.value = _homeState.value.copy(isLoading = true, errorMessage = null, errorCode = null)
-            val result = repository.getHomeDramas(offset = 0)
+            _homeState.value = _homeState.value.copy(isLoading = true, errorMessage = null)
+            val result = repository.getHomeCatalog()
             if (result.isSuccess) {
-                val list = result.getOrNull() ?: emptyList()
-                categorizeHomeDramas(list)
+                val catalog = result.getOrNull()
+                if (catalog != null) {
+                    applyMergedHomeCatalog(catalog)
+                } else {
+                    _homeState.value = _homeState.value.copy(isLoading = false)
+                }
             } else {
-                val error = result.exceptionOrNull()
-                val code = (error as? ApiException)?.code
                 _homeState.value = _homeState.value.copy(
                     isLoading = false,
-                    errorMessage = error?.message ?: "Gagal terhubung ke layanan Melolo.",
-                    errorCode = code
+                    errorMessage = result.exceptionOrNull()?.message
+                        ?: "Koneksi sedang bermasalah. Silakan coba kembali."
                 )
             }
         }
     }
 
-    private fun categorizeHomeDramas(list: List<Drama>) {
-        if (list.isEmpty()) {
+    private fun applyMergedHomeCatalog(catalog: MergedHomeCatalog) {
+        val all = catalog.allCombined
+        if (all.isEmpty()) {
             _homeState.value = _homeState.value.copy(
                 isLoading = false,
                 heroBanners = emptyList(),
@@ -165,30 +147,35 @@ class NaraViewModel(application: Application) : AndroidViewModel(application) {
                 terbaru = emptyList(),
                 romantis = emptyList(),
                 keluarga = emptyList(),
-                pilihan = emptyList()
+                pilihan = emptyList(),
+                errorMessage = null
             )
             return
         }
 
-        // Divide items organically across the 6 requested categories
-        val banners = list.take(5)
-        val rekomendasi = list.shuffled().take(10)
-        val terpopuler = list.sortedByDescending { it.isPopular }.take(10)
-        val terbaru = list.sortedByDescending { it.isLatest }.take(10)
-        val romantis = list.filter { drama ->
-            drama.categories.any { it.contains("Romantis", true) || it.contains("Cinta", true) || it.contains("Love", true) }
-        }.ifEmpty { list.take(8) }
-        val keluarga = list.filter { drama ->
-            drama.categories.any { it.contains("Keluarga", true) || it.contains("Etika", true) || it.contains("Family", true) }
-        }.ifEmpty { list.drop(2).take(8) }
-        val pilihan = list.reversed().take(10)
+        val romantis = all.filter { drama ->
+            drama.categories.any {
+                it.contains("Romantis", true) || it.contains("Romansa", true) ||
+                    it.contains("Cinta", true) || it.contains("Love", true)
+            } || drama.title.contains("Cinta", true)
+        }.take(15).ifEmpty { all.take(10) }
+
+        val keluarga = all.filter { drama ->
+            drama.categories.any {
+                it.contains("Keluarga", true) || it.contains("Ibu", true) ||
+                    it.contains("Pernikahan", true) || it.contains("Family", true) ||
+                    it.contains("Etika", true)
+            }
+        }.take(15).ifEmpty { all.drop(2).take(10).ifEmpty { all } }
+
+        val pilihan = all.reversed().take(15)
 
         _homeState.value = _homeState.value.copy(
             isLoading = false,
-            heroBanners = banners,
-            rekomendasi = rekomendasi,
-            terpopuler = terpopuler,
-            terbaru = terbaru,
+            heroBanners = catalog.banners,
+            rekomendasi = catalog.rekomendasi.take(15),
+            terpopuler = catalog.terpopuler.take(15),
+            terbaru = catalog.terbaru.take(15),
             romantis = romantis,
             keluarga = keluarga,
             pilihan = pilihan,
@@ -203,13 +190,20 @@ class NaraViewModel(application: Application) : AndroidViewModel(application) {
 
     fun onCategoryFilterSelected(category: String) {
         _exploreState.value = _exploreState.value.copy(selectedCategory = category)
-        performSearch(_exploreState.value.query.ifEmpty { category.takeIf { it != "Semua" } ?: "" })
+        val effectiveQuery = _exploreState.value.query.ifEmpty {
+            category.takeIf { it != "Semua" } ?: ""
+        }
+        performSearch(effectiveQuery)
     }
 
     fun performSearch(queryToSearch: String? = null) {
         val q = queryToSearch ?: _exploreState.value.query
         if (q.isBlank()) {
-            _exploreState.value = _exploreState.value.copy(searchResults = emptyList(), isLoading = false)
+            _exploreState.value = _exploreState.value.copy(
+                searchResults = emptyList(),
+                isLoading = false,
+                errorMessage = null
+            )
             return
         }
 
@@ -225,50 +219,69 @@ class NaraViewModel(application: Application) : AndroidViewModel(application) {
             } else {
                 _exploreState.value = _exploreState.value.copy(
                     isLoading = false,
-                    errorMessage = result.exceptionOrNull()?.message ?: "Gagal mencari drama."
+                    errorMessage = result.exceptionOrNull()?.message
+                        ?: "Koneksi sedang bermasalah. Silakan coba kembali."
                 )
             }
         }
     }
 
     // --- DETAIL ACTIONS ---
-    fun openDramaDetail(dramaId: String) {
-        _selectedDramaId.value = dramaId
-        loadDramaDetail(dramaId)
+    fun openDramaDetail(drama: Drama) {
+        openDramaDetail(drama.provider, drama.id)
+    }
+
+    fun openDramaDetail(provider: DramaProvider, dramaId: String) {
+        val target = DramaTarget(provider = provider, dramaId = dramaId)
+        _selectedDrama.value = target
+        loadDramaDetail(provider, dramaId)
     }
 
     fun closeDramaDetail() {
-        _selectedDramaId.value = null
+        _selectedDrama.value = null
     }
 
-    fun loadDramaDetail(dramaId: String) {
+    fun loadDramaDetail(provider: DramaProvider, dramaId: String) {
         viewModelScope.launch {
-            _detailState.value = DetailUiState(dramaId = dramaId, isLoading = true)
+            _detailState.value = DetailUiState(
+                provider = provider,
+                dramaId = dramaId,
+                isLoading = true
+            )
 
-            // Check favorite & history in parallel
             launch {
-                repository.isFavorite(dramaId).collect { isFav ->
-                    _detailState.value = _detailState.value.copy(isFavorite = isFav)
+                repository.isFavorite(provider, dramaId).collect { isFav ->
+                    val current = _detailState.value
+                    if (current.provider == provider && current.dramaId == dramaId) {
+                        _detailState.value = current.copy(isFavorite = isFav)
+                    }
                 }
             }
             launch {
-                repository.getHistory(dramaId).collect { history ->
-                    _detailState.value = _detailState.value.copy(lastHistory = history)
+                repository.getHistory(provider, dramaId).collect { history ->
+                    val current = _detailState.value
+                    if (current.provider == provider && current.dramaId == dramaId) {
+                        _detailState.value = current.copy(lastHistory = history)
+                    }
                 }
             }
 
-            val result = repository.getDramaDetail(dramaId)
-            if (result.isSuccess) {
-                _detailState.value = _detailState.value.copy(
-                    isLoading = false,
-                    detail = result.getOrNull(),
-                    errorMessage = null
-                )
-            } else {
-                _detailState.value = _detailState.value.copy(
-                    isLoading = false,
-                    errorMessage = result.exceptionOrNull()?.message ?: "Gagal memuat detail drama."
-                )
+            val result = repository.getDramaDetail(provider, dramaId)
+            val current = _detailState.value
+            if (current.provider == provider && current.dramaId == dramaId) {
+                if (result.isSuccess) {
+                    _detailState.value = current.copy(
+                        isLoading = false,
+                        detail = result.getOrNull(),
+                        errorMessage = null
+                    )
+                } else {
+                    _detailState.value = current.copy(
+                        isLoading = false,
+                        errorMessage = result.exceptionOrNull()?.message
+                            ?: "Drama tidak tersedia. Silakan coba kembali."
+                    )
+                }
             }
         }
     }
@@ -280,21 +293,24 @@ class NaraViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun removeFavoriteById(dramaId: String) {
+    fun removeFavoriteById(provider: DramaProvider, dramaId: String) {
         viewModelScope.launch {
-            repository.removeFavorite(dramaId)
+            repository.removeFavorite(provider, dramaId)
         }
     }
 
     // --- PLAYER ACTIONS ---
     fun playDrama(drama: Drama, episodeNum: Int = 1) {
+        StartIoAdManager.controller.cancelPendingTransition()
+        val resolvedTotal = if (drama.totalEpisodes > 0) drama.totalEpisodes else 1
+        val targetEp = episodeNum.coerceIn(1, resolvedTotal)
         _playerState.value = PlayerUiState(
             drama = drama,
-            episodeNum = episodeNum,
-            totalEpisodes = if (drama.totalEpisodes > 0) drama.totalEpisodes else 45,
+            episodeNum = targetEp,
+            totalEpisodes = resolvedTotal,
             isLoading = true
         )
-        loadVideoSource(drama.id, episodeNum)
+        loadVideoSource(drama.provider, drama.id, targetEp, forceRefresh = false)
     }
 
     fun switchEpisode(episodeNum: Int) {
@@ -310,7 +326,7 @@ class NaraViewModel(application: Application) : AndroidViewModel(application) {
             errorMessage = null,
             retryTrigger = current.retryTrigger + 1
         )
-        loadVideoSource(drama.id, targetEp)
+        loadVideoSource(drama.provider, drama.id, targetEp, forceRefresh = false)
     }
 
     fun retryVideo() {
@@ -322,13 +338,24 @@ class NaraViewModel(application: Application) : AndroidViewModel(application) {
             errorMessage = null,
             retryTrigger = current.retryTrigger + 1
         )
-        loadVideoSource(drama.id, current.episodeNum)
+        loadVideoSource(drama.provider, drama.id, current.episodeNum, forceRefresh = true)
     }
 
-    private fun loadVideoSource(dramaId: String, episodeNum: Int) {
+    private fun loadVideoSource(
+        provider: DramaProvider,
+        dramaId: String,
+        episodeNum: Int,
+        forceRefresh: Boolean
+    ) {
         viewModelScope.launch {
-            val result = repository.getVideoSource(dramaId, episodeNum)
+            val result = repository.getVideoSource(provider, dramaId, episodeNum, forceRefresh)
             val current = _playerState.value ?: return@launch
+            if (current.drama?.id != dramaId ||
+                current.drama.provider != provider ||
+                current.episodeNum != episodeNum
+            ) {
+                return@launch
+            }
             if (result.isSuccess) {
                 _playerState.value = current.copy(
                     isLoading = false,
@@ -338,7 +365,8 @@ class NaraViewModel(application: Application) : AndroidViewModel(application) {
             } else {
                 _playerState.value = current.copy(
                     isLoading = false,
-                    errorMessage = result.exceptionOrNull()?.message ?: "Gagal memuat video episode $episodeNum."
+                    errorMessage = result.exceptionOrNull()?.message
+                        ?: "Video tidak dapat diputar. Silakan coba kembali."
                 )
             }
         }
@@ -349,6 +377,7 @@ class NaraViewModel(application: Application) : AndroidViewModel(application) {
         val drama = player.drama ?: return
         viewModelScope.launch {
             repository.saveWatchProgress(
+                provider = drama.provider,
                 dramaId = drama.id,
                 title = drama.title,
                 cover = drama.cover,
@@ -361,12 +390,13 @@ class NaraViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun closePlayer() {
+        StartIoAdManager.controller.cancelPendingTransition()
         _playerState.value = null
     }
 
-    fun deleteHistory(dramaId: String) {
+    fun deleteHistory(provider: DramaProvider, dramaId: String) {
         viewModelScope.launch {
-            repository.deleteHistory(dramaId)
+            repository.deleteHistory(provider, dramaId)
         }
     }
 

@@ -1,5 +1,10 @@
 package com.example.model
 
+enum class DramaProvider {
+    MELOLO,
+    DRAMABOX
+}
+
 data class Drama(
     val id: String,
     val title: String,
@@ -9,14 +14,20 @@ data class Drama(
     val categories: List<String> = emptyList(),
     val isPopular: Boolean = false,
     val isLatest: Boolean = false,
-    val rating: String = "9.8"
-)
+    val rating: String = "9.8",
+    val provider: DramaProvider = DramaProvider.MELOLO
+) {
+    val uniqueKey: String
+        get() = "${provider.name.lowercase()}:$id"
+}
 
 data class Episode(
     val episodeNum: Int,
     val videoId: String = "",
     val title: String = "Episode $episodeNum",
-    val durationSeconds: Int = 0
+    val durationSeconds: Int = 0,
+    val videoUrl: String = "",
+    val qualities: List<VideoQualityOption> = emptyList()
 )
 
 data class DramaDetail(
@@ -42,17 +53,18 @@ data class VideoSource(
     val durationMs: Long = 0L,
     val decryptionKey: String = "",
     val decryptionKid: String = "",
-    val qualities: List<VideoQualityOption> = emptyList()
+    val qualities: List<VideoQualityOption> = emptyList(),
+    val provider: DramaProvider = DramaProvider.MELOLO
 )
 
 enum class DetectedVideoFormat(val displayName: String) {
     MP4_PLAIN("MP4"),
-    MP4_CENC("MP4 (CENC Terenkripsi)"),
-    HLS("HLS (M3U8)"),
-    DASH("MPEG-DASH (MPD)"),
+    MP4_CENC("MP4 (CENC)"),
+    HLS("HLS"),
+    DASH("DASH"),
     MPEG_TS("MPEG-TS"),
-    INVALID_RESPONSE("Respons Bukan Media"),
-    UNKNOWN("Format Tidak Dikenal")
+    INVALID_RESPONSE("Invalid"),
+    UNKNOWN("Unknown")
 }
 
 data class VideoProbeDiagnostics(

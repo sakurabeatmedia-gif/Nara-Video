@@ -190,7 +190,7 @@ fun ExploreScreen(
                             )
                             Spacer(modifier = Modifier.height(16.dp))
                             Text(
-                                text = "Mencari di katalog Melolo...",
+                                text = "Mencari drama...",
                                 color = NaraTextSecondary,
                                 fontSize = 13.sp
                             )
@@ -282,7 +282,7 @@ fun ExploreScreen(
                         verticalArrangement = Arrangement.spacedBy(14.dp),
                         modifier = Modifier.fillMaxSize()
                     ) {
-                        items(exploreState.searchResults, key = { it.id }) { drama ->
+                        items(exploreState.searchResults, key = { it.uniqueKey }) { drama ->
                             DramaPosterCard(
                                 drama = drama,
                                 cardWidth = 110.dp,

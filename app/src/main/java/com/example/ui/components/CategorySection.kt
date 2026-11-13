@@ -76,7 +76,7 @@ fun CategorySection(
             contentPadding = PaddingValues(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            items(dramas, key = { it.id }) { drama ->
+            items(dramas, key = { it.uniqueKey }) { drama ->
                 DramaPosterCard(
                     drama = drama,
                     onClick = { onDramaClick(drama) }

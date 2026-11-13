@@ -23,10 +23,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.FastForward
@@ -45,7 +43,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -54,6 +51,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -78,19 +76,17 @@ import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.extractor.DefaultExtractorsFactory
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import com.example.ads.StartIoAdManager
 import com.example.data.api.NetworkClient
 import com.example.model.DetectedVideoFormat
-import com.example.model.VideoProbeDiagnostics
 import com.example.player.CencMp4DataSource
 import com.example.player.VideoFormatDetector
 import com.example.ui.components.ErrorStateView
 import com.example.ui.theme.NaraGold
 import com.example.ui.theme.NaraPrimary
-import com.example.ui.theme.NaraSurface
 import com.example.ui.theme.NaraSurfaceVariant
-import com.example.ui.theme.NaraTextPrimary
-import com.example.ui.theme.NaraTextSecondary
 import com.example.ui.viewmodel.PlayerUiState
 import kotlinx.coroutines.delay
 
@@ -116,9 +112,18 @@ fun PlayerScreen(
     var isDraggingSlider by remember { mutableStateOf(false) }
     var sliderPosition by remember { mutableFloatStateOf(0f) }
     var playerError by remember { mutableStateOf<String?>(null) }
-    var diagnostics by remember { mutableStateOf<VideoProbeDiagnostics?>(null) }
-    var showDiagnostics by remember { mutableStateOf(false) }
     var isFullscreen by remember { mutableStateOf(false) }
+
+    // Start.io session token bound to active drama + episode; cancels pending ad transitions on exit or manual switch
+    val sessionToken = remember(drama?.uniqueKey, playerState.episodeNum) {
+        StartIoAdManager.controller.startNewSession()
+    }
+
+    val latestEpisodeNum by rememberUpdatedState(playerState.episodeNum)
+    val latestTotalEpisodes by rememberUpdatedState(playerState.totalEpisodes)
+    val latestSessionToken by rememberUpdatedState(sessionToken)
+    val latestOnSwitchEpisode by rememberUpdatedState(onSwitchEpisode)
+    val latestOnSaveProgress by rememberUpdatedState(onSaveProgress)
 
     // Initialize ExoPlayer
     val exoPlayer = remember {
@@ -141,11 +146,23 @@ fun PlayerScreen(
                         isBuffering = false
                         totalDurationMs = exoPlayer.duration.coerceAtLeast(0L)
                         playerError = null
+                        // Preload Start.io interstitial while current episode is actively playing
+                        if (latestEpisodeNum < latestTotalEpisodes) {
+                            StartIoAdManager.controller.preloadIfNeeded(context)
+                        }
                     }
                     Player.STATE_ENDED -> {
                         isBuffering = false
-                        if (playerState.episodeNum < playerState.totalEpisodes) {
-                            onSwitchEpisode(playerState.episodeNum + 1)
+                        val hasNext = latestEpisodeNum < latestTotalEpisodes
+                        if (hasNext) {
+                            StartIoAdManager.controller.onEpisodeEnded(
+                                context = context,
+                                sessionToken = latestSessionToken,
+                                hasNextEpisode = true,
+                                onProceedNextEpisode = {
+                                    latestOnSwitchEpisode(latestEpisodeNum + 1)
+                                }
+                            )
                         }
                     }
                     Player.STATE_IDLE -> isBuffering = false
@@ -154,31 +171,22 @@ fun PlayerScreen(
 
             override fun onPlayerError(error: PlaybackException) {
                 isBuffering = false
-                val rawErr = "${error.errorCodeName}: ${error.cause?.localizedMessage ?: error.localizedMessage ?: "-"}"
-                diagnostics = diagnostics?.copy(
-                    nativeError = rawErr,
-                    failureReason = diagnostics?.failureReason
-                        ?: "Pemutar media gagal memutar stream (${error.errorCodeName})."
-                ) ?: VideoProbeDiagnostics(
-                    originalUrl = playerState.videoSource?.videoUrl ?: "-",
-                    nativeError = rawErr,
-                    failureReason = "Pemutar media gagal memutar stream (${error.errorCodeName})."
-                )
-                playerError = "Pemutar gagal (${error.errorCodeName}): ${error.localizedMessage ?: "Format video tidak didukung"}"
+                playerError = "Video tidak dapat diputar. Silakan coba kembali."
             }
         }
         exoPlayer.addListener(listener)
 
         onDispose {
+            StartIoAdManager.controller.cancelPendingTransition()
             val pos = exoPlayer.currentPosition
             val dur = exoPlayer.duration
-            onSaveProgress(pos, dur)
+            latestOnSaveProgress(pos, dur)
             exoPlayer.removeListener(listener)
             exoPlayer.release()
         }
     }
 
-    // Probe and load video source cleanly on episode change or retry
+    // Probe actual video format and recreate MediaSource cleanly on episode change or retry
     LaunchedEffect(playerState.videoSource, playerState.episodeNum, playerState.retryTrigger) {
         exoPlayer.stop()
         exoPlayer.clearMediaItems()
@@ -187,8 +195,6 @@ fun PlayerScreen(
         totalDurationMs = 0L
         sliderPosition = 0f
         playerError = null
-        diagnostics = null
-        showDiagnostics = false
 
         val source = playerState.videoSource
         if (source == null || source.videoUrl.isBlank()) {
@@ -203,11 +209,10 @@ fun PlayerScreen(
                 url = source.videoUrl,
                 decryptionKey = source.decryptionKey
             )
-            diagnostics = outcome.diagnostics
 
             if (outcome.diagnostics.failureReason != null) {
                 isProbing = false
-                playerError = outcome.diagnostics.failureReason
+                playerError = "Video tidak dapat diputar. Silakan coba kembali."
                 return@LaunchedEffect
             }
 
@@ -240,8 +245,7 @@ fun PlayerScreen(
                 }
                 DetectedVideoFormat.INVALID_RESPONSE, DetectedVideoFormat.UNKNOWN -> {
                     isProbing = false
-                    playerError = outcome.diagnostics.failureReason
-                        ?: "Format media tidak dikenali atau tidak didukung."
+                    playerError = "Video tidak dapat diputar. Silakan coba kembali."
                     return@LaunchedEffect
                 }
             }
@@ -249,12 +253,8 @@ fun PlayerScreen(
             exoPlayer.setMediaSource(mediaSource)
             exoPlayer.prepare()
             exoPlayer.play()
-        } catch (e: Exception) {
-            diagnostics = diagnostics?.copy(
-                failureReason = e.localizedMessage ?: "Gagal mempersiapkan pemutar video",
-                nativeError = e.message
-            )
-            playerError = "Gagal memuat video: ${e.localizedMessage ?: "Kesalahan tidak diketahui"}"
+        } catch (_: Exception) {
+            playerError = "Video tidak dapat diputar. Silakan coba kembali."
         } finally {
             isProbing = false
         }
@@ -283,6 +283,7 @@ fun PlayerScreen(
     }
 
     BackHandler {
+        StartIoAdManager.controller.cancelPendingTransition()
         onSaveProgress(exoPlayer.currentPosition, exoPlayer.duration)
         onBack()
     }
@@ -303,6 +304,13 @@ fun PlayerScreen(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.MATCH_PARENT
                     )
+                }
+            },
+            update = { view ->
+                view.resizeMode = if (isFullscreen) {
+                    AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                } else {
+                    AspectRatioFrameLayout.RESIZE_MODE_FIT
                 }
             },
             modifier = Modifier
@@ -327,7 +335,7 @@ fun PlayerScreen(
             }
         }
 
-        // Error Overlay
+        // Clean Error Overlay (no developer/technical details)
         val errorToDisplay = playerError ?: playerState.errorMessage
         if (errorToDisplay != null && !playerState.isLoading && !isProbing) {
             Box(
@@ -338,59 +346,27 @@ fun PlayerScreen(
             ) {
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier
-                        .padding(20.dp)
-                        .verticalScroll(rememberScrollState())
+                    modifier = Modifier.padding(24.dp)
                 ) {
                     ErrorStateView(
                         message = errorToDisplay,
                         onRetry = {
+                            StartIoAdManager.controller.cancelPendingTransition()
                             exoPlayer.stop()
                             exoPlayer.clearMediaItems()
                             onRetry()
                         }
                     )
 
-                    val diag = diagnostics
-                    if (diag != null) {
-                        TextButton(onClick = { showDiagnostics = !showDiagnostics }) {
-                            Text(
-                                text = if (showDiagnostics) "Sembunyikan Info Diagnostik" else "Lihat Info Diagnostik Video",
-                                color = NaraGold,
-                                fontSize = 12.sp
-                            )
-                        }
-
-                        if (showDiagnostics) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 24.dp)
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(NaraSurface)
-                                    .padding(12.dp),
-                                verticalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                DiagnosticLine("Format Terdeteksi", diag.detectedFormat.displayName)
-                                DiagnosticLine("Status HTTP", diag.httpStatus?.toString() ?: "-")
-                                DiagnosticLine("Content-Type", diag.contentType)
-                                DiagnosticLine("Codec", diag.codecInfo)
-                                DiagnosticLine("Pemutar", diag.playerType)
-                                DiagnosticLine("Penyebab", diag.failureReason ?: "-")
-                                if (!diag.nativeError.isNullOrBlank()) {
-                                    DiagnosticLine("Error Pemutar", diag.nativeError)
-                                }
-                                DiagnosticLine("URL Media", diag.originalUrl.ifBlank { "-" })
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
 
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         if (playerState.episodeNum > 1) {
                             Button(
-                                onClick = { onSwitchEpisode(playerState.episodeNum - 1) },
+                                onClick = {
+                                    StartIoAdManager.controller.cancelPendingTransition()
+                                    onSwitchEpisode(playerState.episodeNum - 1)
+                                },
                                 colors = ButtonDefaults.buttonColors(containerColor = NaraSurfaceVariant)
                             ) {
                                 Text("Episode Sebelumnya", fontSize = 12.sp)
@@ -398,7 +374,10 @@ fun PlayerScreen(
                         }
                         if (playerState.episodeNum < playerState.totalEpisodes) {
                             Button(
-                                onClick = { onSwitchEpisode(playerState.episodeNum + 1) },
+                                onClick = {
+                                    StartIoAdManager.controller.cancelPendingTransition()
+                                    onSwitchEpisode(playerState.episodeNum + 1)
+                                },
                                 colors = ButtonDefaults.buttonColors(containerColor = NaraSurfaceVariant)
                             ) {
                                 Text("Episode Berikutnya", fontSize = 12.sp)
@@ -439,6 +418,7 @@ fun PlayerScreen(
                 ) {
                     IconButton(
                         onClick = {
+                            StartIoAdManager.controller.cancelPendingTransition()
                             onSaveProgress(exoPlayer.currentPosition, exoPlayer.duration)
                             onBack()
                         },
@@ -482,7 +462,7 @@ fun PlayerScreen(
                             .padding(horizontal = 8.dp, vertical = 3.dp)
                     ) {
                         Text(
-                            text = playerState.videoSource?.quality ?: "1080P",
+                            text = playerState.videoSource?.quality ?: "HD",
                             color = Color.White,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold
@@ -577,6 +557,7 @@ fun PlayerScreen(
                                 .clip(RoundedCornerShape(6.dp))
                                 .background(if (playerState.episodeNum > 1) NaraSurfaceVariant else Color.Transparent)
                                 .clickable(enabled = playerState.episodeNum > 1) {
+                                    StartIoAdManager.controller.cancelPendingTransition()
                                     onSwitchEpisode(playerState.episodeNum - 1)
                                 }
                                 .padding(horizontal = 8.dp, vertical = 4.dp)
@@ -603,6 +584,7 @@ fun PlayerScreen(
                                 .clip(RoundedCornerShape(6.dp))
                                 .background(if (playerState.episodeNum < playerState.totalEpisodes) NaraSurfaceVariant else Color.Transparent)
                                 .clickable(enabled = playerState.episodeNum < playerState.totalEpisodes) {
+                                    StartIoAdManager.controller.cancelPendingTransition()
                                     onSwitchEpisode(playerState.episodeNum + 1)
                                 }
                                 .padding(horizontal = 8.dp, vertical = 4.dp)
@@ -676,25 +658,6 @@ fun PlayerScreen(
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun DiagnosticLine(label: String, value: String) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Text(
-            text = label,
-            color = NaraTextSecondary,
-            fontSize = 10.sp,
-            fontWeight = FontWeight.SemiBold
-        )
-        Text(
-            text = value,
-            color = NaraTextPrimary,
-            fontSize = 11.sp,
-            maxLines = 3,
-            overflow = TextOverflow.Ellipsis
-        )
     }
 }
 

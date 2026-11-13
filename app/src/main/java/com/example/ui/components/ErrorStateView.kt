@@ -4,7 +4,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -30,7 +29,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.ui.theme.NaraGold
 import com.example.ui.theme.NaraPrimary
 import com.example.ui.theme.NaraRed
 import com.example.ui.theme.NaraSurface
@@ -42,8 +40,7 @@ import com.example.ui.theme.NaraTextSecondary
 fun ErrorStateView(
     message: String,
     onRetry: () -> Unit,
-    modifier: Modifier = Modifier,
-    errorCode: Int? = null
+    modifier: Modifier = Modifier
 ) {
     Box(
         modifier = modifier
@@ -58,7 +55,6 @@ fun ErrorStateView(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            // Icon emblem
             Box(
                 modifier = Modifier
                     .size(64.dp)
@@ -69,34 +65,15 @@ fun ErrorStateView(
                 Icon(
                     imageVector = Icons.Default.CloudOff,
                     contentDescription = null,
-                    tint = if (errorCode in listOf(502, 504)) NaraGold else NaraRed,
+                    tint = NaraRed,
                     modifier = Modifier.size(32.dp)
                 )
             }
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Error badge
-            if (errorCode != null) {
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(50))
-                        .background(if (errorCode in listOf(502, 504)) NaraGold.copy(alpha = 0.15f) else NaraRed.copy(alpha = 0.15f))
-                        .padding(horizontal = 12.dp, vertical = 4.dp)
-                ) {
-                    Text(
-                        text = "STATUS HTTP $errorCode",
-                        color = if (errorCode in listOf(502, 504)) NaraGold else NaraRed,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 0.8.sp
-                    )
-                }
-                Spacer(modifier = Modifier.height(10.dp))
-            }
-
             Text(
-                text = if (errorCode in listOf(502, 504)) "Server Upstream Melolo Sibuk" else "Gagal Memuat Konten",
+                text = "Gagal Memuat Konten",
                 color = NaraTextPrimary,
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold,

@@ -179,7 +179,7 @@ fun HeroBanner(
                                 contentColor = Color.White
                             ),
                             shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.testTag("hero_watch_button_${drama.id}")
+                            modifier = Modifier.testTag("hero_watch_button_${drama.uniqueKey}")
                         ) {
                             Icon(
                                 imageVector = Icons.Default.PlayArrow,

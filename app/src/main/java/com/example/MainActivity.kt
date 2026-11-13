@@ -18,7 +18,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import com.example.model.Drama
+import com.example.ads.StartIoAdManager
 import com.example.ui.components.NaraBottomNavigation
 import com.example.ui.components.NaraTopBar
 import com.example.ui.screens.DetailScreen
@@ -40,6 +40,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        StartIoAdManager.controller.initialize(this)
 
         setContent {
             NaraTheme {
@@ -55,7 +56,7 @@ fun NaraApp(
     modifier: Modifier = Modifier
 ) {
     val currentTab by viewModel.currentTab.collectAsState()
-    val selectedDramaId by viewModel.selectedDramaId.collectAsState()
+    val selectedDrama by viewModel.selectedDrama.collectAsState()
     val playerState by viewModel.playerState.collectAsState()
 
     val homeState by viewModel.homeState.collectAsState()
@@ -63,8 +64,6 @@ fun NaraApp(
     val detailState by viewModel.detailState.collectAsState()
     val favoritesList by viewModel.favoritesList.collectAsState()
     val historyList by viewModel.historyList.collectAsState()
-    val hasCustomApiKey by viewModel.hasCustomApiKey.collectAsState()
-    val maskedCustomApiKey by viewModel.maskedCustomApiKey.collectAsState()
 
     Box(
         modifier = modifier
@@ -84,14 +83,15 @@ fun NaraApp(
             }
 
             // Drama Detail Screen Mode
-            selectedDramaId != null -> {
+            selectedDrama != null -> {
+                val target = selectedDrama!!
                 DetailScreen(
                     detailState = detailState,
                     onBack = { viewModel.closeDramaDetail() },
                     onPlayEpisode = { drama, epNum -> viewModel.playDrama(drama, epNum) },
                     onToggleFavorite = { drama -> viewModel.toggleFavorite(drama) },
                     onRetry = {
-                        selectedDramaId?.let { viewModel.loadDramaDetail(it) }
+                        viewModel.loadDramaDetail(target.provider, target.dramaId)
                     }
                 )
             }
@@ -129,7 +129,7 @@ fun NaraApp(
                                 NaraTab.HOME -> {
                                     HomeScreen(
                                         homeState = homeState,
-                                        onDramaClick = { drama -> viewModel.openDramaDetail(drama.id) },
+                                        onDramaClick = { drama -> viewModel.openDramaDetail(drama) },
                                         onWatchClick = { drama -> viewModel.playDrama(drama, 1) },
                                         onRetry = { viewModel.loadHomeData() }
                                     )
@@ -141,7 +141,7 @@ fun NaraApp(
                                         onQueryChanged = { query -> viewModel.onSearchQueryChanged(query) },
                                         onSearchSubmit = { query -> viewModel.performSearch(query) },
                                         onCategorySelected = { cat -> viewModel.onCategoryFilterSelected(cat) },
-                                        onDramaClick = { drama -> viewModel.openDramaDetail(drama.id) }
+                                        onDramaClick = { drama -> viewModel.openDramaDetail(drama) }
                                     )
                                 }
 
@@ -149,8 +149,8 @@ fun NaraApp(
                                     HistoryScreen(
                                         historyList = historyList,
                                         onResumeWatch = { drama, ep -> viewModel.playDrama(drama, ep) },
-                                        onDramaClick = { id -> viewModel.openDramaDetail(id) },
-                                        onDeleteItem = { id -> viewModel.deleteHistory(id) },
+                                        onDramaClick = { provider, id -> viewModel.openDramaDetail(provider, id) },
+                                        onDeleteItem = { provider, id -> viewModel.deleteHistory(provider, id) },
                                         onClearAll = { viewModel.clearAllHistory() }
                                     )
                                 }
@@ -158,7 +158,7 @@ fun NaraApp(
                                 NaraTab.FAVORITES -> {
                                     FavoriteScreen(
                                         favoritesList = favoritesList,
-                                        onDramaClick = { drama -> viewModel.openDramaDetail(drama.id) }
+                                        onDramaClick = { drama -> viewModel.openDramaDetail(drama) }
                                     )
                                 }
 
@@ -166,10 +166,6 @@ fun NaraApp(
                                     ProfileScreen(
                                         totalFavorites = favoritesList.size,
                                         totalHistory = historyList.size,
-                                        hasCustomApiKey = hasCustomApiKey,
-                                        maskedCustomApiKey = maskedCustomApiKey,
-                                        onSaveCustomApiKey = { key -> viewModel.saveCustomApiKey(key) },
-                                        onResetCustomApiKey = { viewModel.resetCustomApiKey() },
                                         onClearHistory = { viewModel.clearAllHistory() }
                                     )
                                 }

@@ -49,6 +49,7 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.data.db.WatchHistoryEntity
 import com.example.model.Drama
+import com.example.model.DramaProvider
 import com.example.ui.theme.NaraBackground
 import com.example.ui.theme.NaraBorder
 import com.example.ui.theme.NaraPrimary
@@ -62,8 +63,8 @@ import com.example.ui.theme.NaraTextSecondary
 fun HistoryScreen(
     historyList: List<WatchHistoryEntity>,
     onResumeWatch: (drama: Drama, episode: Int) -> Unit,
-    onDramaClick: (dramaId: String) -> Unit,
-    onDeleteItem: (dramaId: String) -> Unit,
+    onDramaClick: (provider: DramaProvider, dramaId: String) -> Unit,
+    onDeleteItem: (provider: DramaProvider, dramaId: String) -> Unit,
     onClearAll: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -164,12 +165,15 @@ fun HistoryScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier.fillMaxSize()
             ) {
-                items(historyList, key = { it.dramaId }) { item ->
+                items(historyList, key = { "${it.provider}:${it.dramaId}" }) { item ->
+                    val provider = runCatching { DramaProvider.valueOf(item.provider) }
+                        .getOrDefault(DramaProvider.MELOLO)
                     val drama = Drama(
                         id = item.dramaId,
                         title = item.title,
                         cover = item.cover,
-                        totalEpisodes = item.totalEpisodes
+                        totalEpisodes = item.totalEpisodes,
+                        provider = provider
                     )
 
                     val progress = if (item.durationMs > 0) {
@@ -181,7 +185,7 @@ fun HistoryScreen(
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(12.dp))
                             .background(NaraSurface)
-                            .clickable { onDramaClick(item.dramaId) }
+                            .clickable { onDramaClick(provider, item.dramaId) }
                             .padding(10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -270,7 +274,7 @@ fun HistoryScreen(
 
                         // Delete button
                         IconButton(
-                            onClick = { onDeleteItem(item.dramaId) },
+                            onClick = { onDeleteItem(provider, item.dramaId) },
                             modifier = Modifier.size(36.dp)
                         ) {
                             Icon(

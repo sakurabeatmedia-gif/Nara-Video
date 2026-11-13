@@ -59,7 +59,7 @@ fun DramaPosterCard(
             .width(cardWidth)
             .clip(RoundedCornerShape(10.dp))
             .clickable(onClick = onClick)
-            .testTag("drama_card_${drama.id}")
+            .testTag("drama_card_${drama.uniqueKey}")
     ) {
         // Poster Box
         Box(

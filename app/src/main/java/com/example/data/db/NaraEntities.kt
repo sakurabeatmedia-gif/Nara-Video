@@ -1,11 +1,14 @@
 package com.example.data.db
 
 import androidx.room.Entity
-import androidx.room.PrimaryKey
+import com.example.model.DramaProvider
 
-@Entity(tableName = "favorites")
+@Entity(
+    tableName = "favorites",
+    primaryKeys = ["provider", "dramaId"]
+)
 data class FavoriteDramaEntity(
-    @PrimaryKey
+    val provider: String = DramaProvider.MELOLO.name,
     val dramaId: String,
     val title: String,
     val cover: String,
@@ -14,9 +17,12 @@ data class FavoriteDramaEntity(
     val addedAt: Long = System.currentTimeMillis()
 )
 
-@Entity(tableName = "watch_history")
+@Entity(
+    tableName = "watch_history",
+    primaryKeys = ["provider", "dramaId"]
+)
 data class WatchHistoryEntity(
-    @PrimaryKey
+    val provider: String = DramaProvider.MELOLO.name,
     val dramaId: String,
     val title: String,
     val cover: String,
