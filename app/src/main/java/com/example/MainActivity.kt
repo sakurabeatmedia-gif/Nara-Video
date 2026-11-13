@@ -15,9 +15,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import com.example.ads.StartIoAdManager
 import com.example.ui.components.NaraBottomNavigation
 import com.example.ui.components.NaraTopBar
@@ -55,6 +57,8 @@ fun NaraApp(
     viewModel: NaraViewModel,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+
     val currentTab by viewModel.currentTab.collectAsState()
     val selectedDrama by viewModel.selectedDrama.collectAsState()
     val playerState by viewModel.playerState.collectAsState()
@@ -65,38 +69,61 @@ fun NaraApp(
     val favoritesList by viewModel.favoritesList.collectAsState()
     val historyList by viewModel.historyList.collectAsState()
 
+    LaunchedEffect(Unit) {
+        StartIoAdManager.controller.preloadIfNeeded(context)
+    }
+
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(NaraBackground)
     ) {
         when {
-            // Fullscreen Video Player Mode
             playerState != null -> {
                 PlayerScreen(
                     playerState = playerState!!,
                     onBack = { viewModel.closePlayer() },
-                    onSwitchEpisode = { epNum -> viewModel.switchEpisode(epNum) },
-                    onSaveProgress = { pos, dur -> viewModel.saveWatchProgress(pos, dur) },
+                    onSwitchEpisode = { epNum ->
+                        viewModel.switchEpisode(epNum)
+                    },
+                    onSaveProgress = { pos, dur ->
+                        viewModel.saveWatchProgress(pos, dur)
+                    },
                     onRetry = { viewModel.retryVideo() }
                 )
             }
 
-            // Drama Detail Screen Mode
             selectedDrama != null -> {
                 val target = selectedDrama!!
+
                 DetailScreen(
                     detailState = detailState,
-                    onBack = { viewModel.closeDramaDetail() },
-                    onPlayEpisode = { drama, epNum -> viewModel.playDrama(drama, epNum) },
-                    onToggleFavorite = { drama -> viewModel.toggleFavorite(drama) },
+                    onBack = {
+                        viewModel.closeDramaDetail()
+                    },
+                    onPlayEpisode = { drama, epNum ->
+                        val controller = StartIoAdManager.controller
+                        val sessionToken = controller.startNewSession()
+
+                        controller.requestEpisodeTransition(
+                            context = context,
+                            sessionToken = sessionToken
+                        ) {
+                            viewModel.playDrama(drama, epNum)
+                        }
+                    },
+                    onToggleFavorite = { drama ->
+                        viewModel.toggleFavorite(drama)
+                    },
                     onRetry = {
-                        viewModel.loadDramaDetail(target.provider, target.dramaId)
+                        viewModel.loadDramaDetail(
+                            target.provider,
+                            target.dramaId
+                        )
                     }
                 )
             }
 
-            // Main Scaffold with Bottom Navigation
             else -> {
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
@@ -104,14 +131,18 @@ fun NaraApp(
                     topBar = {
                         if (currentTab == NaraTab.HOME) {
                             NaraTopBar(
-                                onSearchClick = { viewModel.selectTab(NaraTab.EXPLORE) }
+                                onSearchClick = {
+                                    viewModel.selectTab(NaraTab.EXPLORE)
+                                }
                             )
                         }
                     },
                     bottomBar = {
                         NaraBottomNavigation(
                             selectedTab = currentTab,
-                            onTabSelected = { tab -> viewModel.selectTab(tab) }
+                            onTabSelected = { tab ->
+                                viewModel.selectTab(tab)
+                            }
                         )
                     }
                 ) { innerPadding ->
@@ -122,43 +153,69 @@ fun NaraApp(
                     ) {
                         AnimatedContent(
                             targetState = currentTab,
-                            transitionSpec = { fadeIn() togetherWith fadeOut() },
+                            transitionSpec = {
+                                fadeIn() togetherWith fadeOut()
+                            },
                             label = "tab_transition"
                         ) { tab ->
                             when (tab) {
                                 NaraTab.HOME -> {
                                     HomeScreen(
                                         homeState = homeState,
-                                        onDramaClick = { drama -> viewModel.openDramaDetail(drama) },
-                                        onWatchClick = { drama -> viewModel.playDrama(drama, 1) },
-                                        onRetry = { viewModel.loadHomeData() }
+                                        onDramaClick = { drama ->
+                                            viewModel.openDramaDetail(drama)
+                                        },
+                                        onWatchClick = { drama ->
+                                            viewModel.playDrama(drama, 1)
+                                        },
+                                        onRetry = {
+                                            viewModel.loadHomeData()
+                                        }
                                     )
                                 }
 
                                 NaraTab.EXPLORE -> {
                                     ExploreScreen(
                                         exploreState = exploreState,
-                                        onQueryChanged = { query -> viewModel.onSearchQueryChanged(query) },
-                                        onSearchSubmit = { query -> viewModel.performSearch(query) },
-                                        onCategorySelected = { cat -> viewModel.onCategoryFilterSelected(cat) },
-                                        onDramaClick = { drama -> viewModel.openDramaDetail(drama) }
+                                        onQueryChanged = { query ->
+                                            viewModel.onSearchQueryChanged(query)
+                                        },
+                                        onSearchSubmit = { query ->
+                                            viewModel.performSearch(query)
+                                        },
+                                        onCategorySelected = { category ->
+                                            viewModel.onCategoryFilterSelected(category)
+                                        },
+                                        onDramaClick = { drama ->
+                                            viewModel.openDramaDetail(drama)
+                                        }
                                     )
                                 }
 
                                 NaraTab.HISTORY -> {
                                     HistoryScreen(
                                         historyList = historyList,
-                                        onResumeWatch = { drama, ep -> viewModel.playDrama(drama, ep) },
-                                        onDramaClick = { provider, id -> viewModel.openDramaDetail(provider, id) },
-                                        onDeleteItem = { provider, id -> viewModel.deleteHistory(provider, id) },
-                                        onClearAll = { viewModel.clearAllHistory() }
+                                        onResumeWatch = { drama, episode ->
+                                            viewModel.playDrama(drama, episode)
+                                        },
+                                        onDramaClick = { provider, id ->
+                                            viewModel.openDramaDetail(provider, id)
+                                        },
+                                        onDeleteItem = { provider, id ->
+                                            viewModel.deleteHistory(provider, id)
+                                        },
+                                        onClearAll = {
+                                            viewModel.clearAllHistory()
+                                        }
                                     )
                                 }
 
                                 NaraTab.FAVORITES -> {
                                     FavoriteScreen(
                                         favoritesList = favoritesList,
-                                        onDramaClick = { drama -> viewModel.openDramaDetail(drama) }
+                                        onDramaClick = { drama ->
+                                            viewModel.openDramaDetail(drama)
+                                        }
                                     )
                                 }
 
@@ -166,7 +223,9 @@ fun NaraApp(
                                     ProfileScreen(
                                         totalFavorites = favoritesList.size,
                                         totalHistory = historyList.size,
-                                        onClearHistory = { viewModel.clearAllHistory() }
+                                        onClearHistory = {
+                                            viewModel.clearAllHistory()
+                                        }
                                     )
                                 }
                             }
