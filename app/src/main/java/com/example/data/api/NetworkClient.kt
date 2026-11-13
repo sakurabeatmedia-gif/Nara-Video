@@ -53,6 +53,10 @@ object NetworkClient {
         createRetrofit(ApiConstants.REELSHORT_BASE_URL)
     }
 
+    private val dramaBiteRetrofit by lazy {
+        createRetrofit(ApiConstants.DRAMABITE_BASE_URL)
+    }
+
     val meloloService: MeloloApiService by lazy {
         meloloRetrofit.create(MeloloApiService::class.java)
     }
@@ -67,5 +71,9 @@ object NetworkClient {
 
     val reelShortService: ReelShortApiService by lazy {
         reelShortRetrofit.create(ReelShortApiService::class.java)
+    }
+
+    val dramaBiteService: DramaBiteApiService by lazy {
+        dramaBiteRetrofit.create(DramaBiteApiService::class.java)
     }
 }
