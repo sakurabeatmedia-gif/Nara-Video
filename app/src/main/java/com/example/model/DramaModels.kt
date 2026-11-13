@@ -2,7 +2,11 @@ package com.example.model
 
 enum class DramaProvider {
     MELOLO,
-    DRAMABOX
+    DRAMABOX,
+    DRAMAWAVE,
+    REELSHORT,
+    DRAMABITE,
+    GOODSHORT
 }
 
 data class Drama(
