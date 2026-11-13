@@ -21,6 +21,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import com.example.ads.StartIoAdManager
+import com.example.model.Drama
 import com.example.ui.components.NaraBottomNavigation
 import com.example.ui.components.NaraTopBar
 import com.example.ui.screens.DetailScreen
@@ -42,6 +43,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
         StartIoAdManager.controller.initialize(this)
 
         setContent {
@@ -58,6 +60,7 @@ fun NaraApp(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val controller = StartIoAdManager.controller
 
     val currentTab by viewModel.currentTab.collectAsState()
     val selectedDrama by viewModel.selectedDrama.collectAsState()
@@ -70,7 +73,18 @@ fun NaraApp(
     val historyList by viewModel.historyList.collectAsState()
 
     LaunchedEffect(Unit) {
-        StartIoAdManager.controller.preloadIfNeeded(context)
+        controller.preloadIfNeeded(context)
+    }
+
+    val playWithAd: (Drama, Int) -> Unit = { drama, episode ->
+        val sessionToken = controller.startNewSession()
+
+        controller.requestEpisodeTransition(
+            context = context,
+            sessionToken = sessionToken
+        ) {
+            viewModel.playDrama(drama, episode)
+        }
     }
 
     Box(
@@ -82,14 +96,18 @@ fun NaraApp(
             playerState != null -> {
                 PlayerScreen(
                     playerState = playerState!!,
-                    onBack = { viewModel.closePlayer() },
-                    onSwitchEpisode = { epNum ->
-                        viewModel.switchEpisode(epNum)
+                    onBack = {
+                        viewModel.closePlayer()
                     },
-                    onSaveProgress = { pos, dur ->
-                        viewModel.saveWatchProgress(pos, dur)
+                    onSwitchEpisode = { episode ->
+                        viewModel.switchEpisode(episode)
                     },
-                    onRetry = { viewModel.retryVideo() }
+                    onSaveProgress = { position, duration ->
+                        viewModel.saveWatchProgress(position, duration)
+                    },
+                    onRetry = {
+                        viewModel.retryVideo()
+                    }
                 )
             }
 
@@ -101,16 +119,8 @@ fun NaraApp(
                     onBack = {
                         viewModel.closeDramaDetail()
                     },
-                    onPlayEpisode = { drama, epNum ->
-                        val controller = StartIoAdManager.controller
-                        val sessionToken = controller.startNewSession()
-
-                        controller.requestEpisodeTransition(
-                            context = context,
-                            sessionToken = sessionToken
-                        ) {
-                            viewModel.playDrama(drama, epNum)
-                        }
+                    onPlayEpisode = { drama, episode ->
+                        playWithAd(drama, episode)
                     },
                     onToggleFavorite = { drama ->
                         viewModel.toggleFavorite(drama)
@@ -166,7 +176,7 @@ fun NaraApp(
                                             viewModel.openDramaDetail(drama)
                                         },
                                         onWatchClick = { drama ->
-                                            viewModel.playDrama(drama, 1)
+                                            playWithAd(drama, 1)
                                         },
                                         onRetry = {
                                             viewModel.loadHomeData()
@@ -196,13 +206,19 @@ fun NaraApp(
                                     HistoryScreen(
                                         historyList = historyList,
                                         onResumeWatch = { drama, episode ->
-                                            viewModel.playDrama(drama, episode)
+                                            playWithAd(drama, episode)
                                         },
                                         onDramaClick = { provider, id ->
-                                            viewModel.openDramaDetail(provider, id)
+                                            viewModel.openDramaDetail(
+                                                provider,
+                                                id
+                                            )
                                         },
                                         onDeleteItem = { provider, id ->
-                                            viewModel.deleteHistory(provider, id)
+                                            viewModel.deleteHistory(
+                                                provider,
+                                                id
+                                            )
                                         },
                                         onClearAll = {
                                             viewModel.clearAllHistory()
