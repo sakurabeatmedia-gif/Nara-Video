@@ -27,6 +27,40 @@ class ReelShortRepository(
             requestList { service.getTrending() }
         }
 
+    suspend fun getShelf(
+        shelfId: String,
+        page: Int = 1,
+        limit: Int = 24
+    ): Result<List<Drama>> = withContext(Dispatchers.IO) {
+        try {
+            if (shelfId.isBlank()) {
+                throw IllegalArgumentException(
+                    "ID shelf ReelShort tidak boleh kosong."
+                )
+            }
+
+            val json = requireResponse(
+                service.getShelf(
+                    id = shelfId,
+                    page = page,
+                    limit = limit
+                )
+            )
+
+            val error = ReelShortJsonParser.checkApiError(json)
+
+            if (error != null) {
+                throw ApiException(error.first, error.second)
+            }
+
+            Result.success(
+                ReelShortJsonParser.parseShelf(json)
+            )
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     suspend fun search(query: String): Result<List<Drama>> =
         withContext(Dispatchers.IO) {
             if (query.isBlank()) {
