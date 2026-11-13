@@ -6,6 +6,8 @@ import com.example.data.api.DramaBoxApiService
 import com.example.data.api.DramaBoxJsonParser
 import com.example.data.api.DramaWaveApiService
 import com.example.data.api.DramaWaveJsonParser
+import com.example.data.api.GoodShortApiService
+import com.example.data.api.GoodShortJsonParser
 import com.example.data.api.JsonDataParser
 import com.example.data.api.MeloloApiService
 import com.example.data.api.NetworkClient
@@ -41,7 +43,8 @@ class NaraRepository(
     private val dramaBoxService: DramaBoxApiService = NetworkClient.dramaBoxService,
     private val dao: NaraDao,
     private val dramaWaveService: DramaWaveApiService = NetworkClient.dramaWaveService,
-    private val dramaBiteService: DramaBiteApiService = NetworkClient.dramaBiteService
+    private val dramaBiteService: DramaBiteApiService = NetworkClient.dramaBiteService,
+    private val goodShortService: GoodShortApiService = NetworkClient.goodShortService
 ) {
     private val dramaBoxEpisodesCache =
         ConcurrentHashMap<String, List<Episode>>()
@@ -52,11 +55,13 @@ class NaraRepository(
                 val meloloDef = async { fetchMeloloHome() }
                 val waveDef = async { fetchDramaWaveHome() }
                 val biteDef = async { fetchDramaBiteHome() }
+                val goodShortDef = async { fetchGoodShortHome() }
                 val langDef = async { fetchPreferredDramaBoxLang() }
 
                 val meloloRes = meloloDef.await()
                 val waveRes = waveDef.await()
                 val biteRes = biteDef.await()
+                val goodShortRes = goodShortDef.await()
                 val lang = langDef.await()
 
                 val trendingDef = async {
@@ -101,6 +106,7 @@ class NaraRepository(
                 val melolo = meloloRes.getOrNull().orEmpty()
                 val wave = waveRes.getOrNull().orEmpty()
                 val bite = biteRes.getOrNull().orEmpty()
+                val goodShort = goodShortRes.getOrNull().orEmpty()
                 val dbTrending = trending.getOrNull().orEmpty()
                 val dbLatest = latest.getOrNull().orEmpty()
                 val dbForYou = forYou.getOrNull().orEmpty()
@@ -114,6 +120,7 @@ class NaraRepository(
                     ),
                     wave,
                     bite,
+                    goodShort,
                     dbForYou,
                     dbLatest,
                     dbBrowse,
@@ -125,6 +132,7 @@ class NaraRepository(
                         meloloRes.exceptionOrNull(),
                         waveRes.exceptionOrNull(),
                         biteRes.exceptionOrNull(),
+                        goodShortRes.exceptionOrNull(),
                         trending.exceptionOrNull(),
                         latest.exceptionOrNull(),
                         forYou.exceptionOrNull(),
@@ -145,12 +153,14 @@ class NaraRepository(
                             dbTrending,
                             wave,
                             bite,
+                            goodShort,
                             melolo
                         ).take(6),
                         rekomendasi = CatalogMerger.mergeAndDeduplicate(
                             dbForYou,
                             wave,
                             bite,
+                            goodShort,
                             melolo
                         ).ifEmpty { all },
                         terpopuler = CatalogMerger.mergeAndDeduplicate(
@@ -158,6 +168,7 @@ class NaraRepository(
                             dbDubbed,
                             wave.filter { it.isPopular },
                             bite.filter { it.isPopular },
+                            goodShort.filter { it.isPopular },
                             melolo.filter { it.isPopular }
                         ).ifEmpty { all },
                         terbaru = CatalogMerger.mergeAndDeduplicate(
@@ -165,6 +176,7 @@ class NaraRepository(
                             dbBrowse,
                             wave.filter { it.isLatest },
                             bite.filter { it.isLatest },
+                            goodShort.filter { it.isLatest },
                             melolo.filter { it.isLatest }
                         ).ifEmpty { all },
                         allCombined = all
@@ -222,29 +234,44 @@ class NaraRepository(
                 }
             }
 
+            val goodShortDef = async {
+                runCatching {
+                    val response = goodShortService.search(query = cleanQuery)
+                    val json = requireResponse(response)
+                    checkApiError(
+                        GoodShortJsonParser.checkApiError(json)
+                    )
+                    GoodShortJsonParser.parseDramaList(json)
+                }
+            }
+
             val melolo = meloloDef.await()
             val box = boxDef.await()
             val wave = waveDef.await()
             val bite = biteDef.await()
+            val goodShort = goodShortDef.await()
 
             val combined = CatalogMerger.mergeAndDeduplicate(
                 melolo.getOrNull().orEmpty(),
                 box.getOrNull().orEmpty(),
                 wave.getOrNull().orEmpty(),
-                bite.getOrNull().orEmpty()
+                bite.getOrNull().orEmpty(),
+                goodShort.getOrNull().orEmpty()
             )
 
             if (combined.isEmpty() &&
                 melolo.isFailure &&
                 box.isFailure &&
                 wave.isFailure &&
-                bite.isFailure
+                bite.isFailure &&
+                goodShort.isFailure
             ) {
                 return@coroutineScope Result.failure(
                     melolo.exceptionOrNull()
                         ?: box.exceptionOrNull()
                         ?: wave.exceptionOrNull()
                         ?: bite.exceptionOrNull()
+                        ?: goodShort.exceptionOrNull()
                         ?: Exception("Pencarian gagal.")
                 )
             }
@@ -317,6 +344,18 @@ class NaraRepository(
                     )
                     Result.success(
                         DramaBiteJsonParser.parseDramaDetail(
+                            dramaId,
+                            json
+                        )
+                    )
+                }
+
+                DramaProvider.GOODSHORT -> {
+                    val json = requireResponse(
+                        goodShortService.getDetail(id = dramaId)
+                    )
+                    Result.success(
+                        GoodShortJsonParser.parseDramaDetail(
                             dramaId,
                             json
                         )
@@ -411,6 +450,24 @@ class NaraRepository(
                         Result.success(video)
                     } else {
                         Result.failure(Exception("Video DramaBite tidak tersedia."))
+                    }
+                }
+
+                DramaProvider.GOODSHORT -> {
+                    val json = requireResponse(
+                        goodShortService.getAllEpisodes(id = dramaId)
+                    )
+
+                    val video = JsonDataParser.parseVideoSource(
+                        dramaId,
+                        episodeNum,
+                        json
+                    )
+
+                    if (video != null && video.videoUrl.isNotEmpty()) {
+                        Result.success(video)
+                    } else {
+                        Result.failure(Exception("Video GoodShort tidak tersedia."))
                     }
                 }
 
@@ -529,6 +586,16 @@ class NaraRepository(
             val json = requireResponse(dramaBiteService.getHome())
             checkApiError(DramaBiteJsonParser.checkApiError(json))
             Result.success(DramaBiteJsonParser.parseDramaList(json))
+        } catch (e: Exception) {
+            Result.failure(mapException(e))
+        }
+    }
+
+    private suspend fun fetchGoodShortHome(): Result<List<Drama>> {
+        return try {
+            val json = requireResponse(goodShortService.getHome())
+            checkApiError(GoodShortJsonParser.checkApiError(json))
+            Result.success(GoodShortJsonParser.parseDramaList(json))
         } catch (e: Exception) {
             Result.failure(mapException(e))
         }
