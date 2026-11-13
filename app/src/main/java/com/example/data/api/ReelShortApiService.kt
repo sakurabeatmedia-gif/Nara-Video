@@ -22,6 +22,14 @@ interface ReelShortApiService {
         @Query("lang") lang: String = "en"
     ): Response<ResponseBody>
 
+    @GET("shelf/{id}")
+    suspend fun getShelf(
+        @Path("id") id: String,
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 24,
+        @Query("lang") lang: String = "en"
+    ): Response<ResponseBody>
+
     @GET("search")
     suspend fun search(
         @Query("q") query: String,
