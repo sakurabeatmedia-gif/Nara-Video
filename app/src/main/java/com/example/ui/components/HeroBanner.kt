@@ -42,10 +42,8 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.model.Drama
 import com.example.ui.theme.NaraBackground
-import com.example.ui.theme.NaraGold
 import com.example.ui.theme.NaraPrimary
 import com.example.ui.theme.NaraPrimaryDark
-import com.example.ui.theme.NaraSurface
 import com.example.ui.theme.NaraSurfaceVariant
 import com.example.ui.theme.NaraTextPrimary
 import com.example.ui.theme.NaraTextSecondary
@@ -59,7 +57,9 @@ fun HeroBanner(
 ) {
     if (banners.isEmpty()) return
 
-    val pagerState = rememberPagerState(pageCount = { banners.size })
+    val pagerState = rememberPagerState(
+        pageCount = { banners.size }
+    )
 
     Box(
         modifier = modifier
@@ -76,9 +76,10 @@ fun HeroBanner(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .clickable { onDetailClick(drama) }
+                    .clickable {
+                        onDetailClick(drama)
+                    }
             ) {
-                // Background Poster Image
                 AsyncImage(
                     model = ImageRequest.Builder(LocalContext.current)
                         .data(drama.cover)
@@ -89,7 +90,6 @@ fun HeroBanner(
                     modifier = Modifier.fillMaxSize()
                 )
 
-                // Dark multi-stop gradient for contrast and seamless merge into dark background
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -105,14 +105,19 @@ fun HeroBanner(
                         )
                 )
 
-                // Top banner tag
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopStart)
-                        .padding(start = 16.dp, top = 65.dp)
+                        .padding(
+                            start = 16.dp,
+                            top = 65.dp
+                        )
                         .clip(RoundedCornerShape(4.dp))
                         .background(NaraPrimaryDark)
-                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                        .padding(
+                            horizontal = 8.dp,
+                            vertical = 3.dp
+                        )
                 ) {
                     Text(
                         text = "UNGGULAN HARI INI",
@@ -123,25 +128,33 @@ fun HeroBanner(
                     )
                 }
 
-                // Banner Details at the Bottom
                 Column(
                     modifier = Modifier
                         .align(Alignment.BottomStart)
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                        .padding(
+                            horizontal = 16.dp,
+                            vertical = 12.dp
+                        )
                 ) {
-                    // Category pills
                     if (drama.categories.isNotEmpty()) {
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            modifier = Modifier.padding(bottom = 6.dp)
+                            modifier = Modifier.padding(bottom = 8.dp)
                         ) {
                             drama.categories.take(3).forEach { cat ->
                                 Box(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(4.dp))
-                                        .background(NaraSurfaceVariant.copy(alpha = 0.8f))
-                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                        .background(
+                                            NaraSurfaceVariant.copy(
+                                                alpha = 0.8f
+                                            )
+                                        )
+                                        .padding(
+                                            horizontal = 6.dp,
+                                            vertical = 2.dp
+                                        )
                                 ) {
                                     Text(
                                         text = cat,
@@ -154,7 +167,12 @@ fun HeroBanner(
                         }
                     }
 
-                    // Title
+                    ProviderLabel(
+                        provider = drama.provider
+                    )
+
+                    Spacer(modifier = Modifier.height(7.dp))
+
                     Text(
                         text = drama.title,
                         color = NaraTextPrimary,
@@ -166,27 +184,32 @@ fun HeroBanner(
 
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    // Action buttons
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Button(
-                            onClick = { onWatchClick(drama) },
+                            onClick = {
+                                onWatchClick(drama)
+                            },
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = NaraPrimary,
                                 contentColor = Color.White
                             ),
                             shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.testTag("hero_watch_button_${drama.uniqueKey}")
+                            modifier = Modifier.testTag(
+                                "hero_watch_button_${drama.uniqueKey}"
+                            )
                         ) {
                             Icon(
                                 imageVector = Icons.Default.PlayArrow,
                                 contentDescription = null,
                                 modifier = Modifier.size(18.dp)
                             )
+
                             Spacer(modifier = Modifier.width(6.dp))
+
                             Text(
                                 text = "Tonton Sekarang",
                                 fontSize = 13.sp,
@@ -195,7 +218,9 @@ fun HeroBanner(
                         }
 
                         OutlinedButton(
-                            onClick = { onDetailClick(drama) },
+                            onClick = {
+                                onDetailClick(drama)
+                            },
                             shape = RoundedCornerShape(8.dp),
                             colors = ButtonDefaults.outlinedButtonColors(
                                 contentColor = NaraTextPrimary
@@ -207,7 +232,9 @@ fun HeroBanner(
                                 modifier = Modifier.size(16.dp),
                                 tint = NaraTextSecondary
                             )
+
                             Spacer(modifier = Modifier.width(6.dp))
+
                             Text(
                                 text = "Detail",
                                 fontSize = 13.sp,
@@ -219,22 +246,34 @@ fun HeroBanner(
             }
         }
 
-        // Carousel indicator dots
         if (banners.size > 1) {
             Row(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(end = 16.dp, bottom = 16.dp),
+                    .padding(
+                        end = 16.dp,
+                        bottom = 16.dp
+                    ),
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 repeat(banners.size) { index ->
-                    val isSelected = pagerState.currentPage == index
+                    val isSelected =
+                        pagerState.currentPage == index
+
                     Box(
                         modifier = Modifier
                             .height(4.dp)
-                            .width(if (isSelected) 16.dp else 4.dp)
+                            .width(
+                                if (isSelected) 16.dp else 4.dp
+                            )
                             .clip(CircleShape)
-                            .background(if (isSelected) NaraPrimary else Color.White.copy(alpha = 0.35f))
+                            .background(
+                                if (isSelected) {
+                                    NaraPrimary
+                                } else {
+                                    Color.White.copy(alpha = 0.35f)
+                                }
+                            )
                     )
                 }
             }
