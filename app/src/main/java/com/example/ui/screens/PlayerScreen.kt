@@ -114,7 +114,6 @@ fun PlayerScreen(
     var playerError by remember { mutableStateOf<String?>(null) }
     var isFullscreen by remember { mutableStateOf(false) }
 
-    // Start.io session token bound to active drama + episode; cancels pending ad transitions on exit or manual switch
     val sessionToken = remember(drama?.uniqueKey, playerState.episodeNum) {
         StartIoAdManager.controller.startNewSession()
     }
@@ -125,71 +124,111 @@ fun PlayerScreen(
     val latestOnSwitchEpisode by rememberUpdatedState(onSwitchEpisode)
     val latestOnSaveProgress by rememberUpdatedState(onSaveProgress)
 
-    // Initialize ExoPlayer
     val exoPlayer = remember {
         ExoPlayer.Builder(context).build().apply {
             playWhenReady = true
         }
     }
 
-    // Attach listeners
+    // Semua perpindahan manual memakai satu gerbang iklan.
+    fun requestEpisodeChange(targetEpisode: Int) {
+        if (targetEpisode < 1 ||
+            targetEpisode > latestTotalEpisodes ||
+            targetEpisode == latestEpisodeNum
+        ) {
+            return
+        }
+
+        StartIoAdManager.controller.requestEpisodeTransition(
+            context = context,
+            sessionToken = latestSessionToken,
+            onProceed = {
+                latestOnSwitchEpisode(targetEpisode)
+            }
+        )
+    }
+
     DisposableEffect(exoPlayer) {
         val listener = object : Player.Listener {
+
             override fun onIsPlayingChanged(playing: Boolean) {
                 isPlaying = playing
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
                 when (playbackState) {
-                    Player.STATE_BUFFERING -> isBuffering = true
+                    Player.STATE_BUFFERING -> {
+                        isBuffering = true
+                    }
+
                     Player.STATE_READY -> {
                         isBuffering = false
-                        totalDurationMs = exoPlayer.duration.coerceAtLeast(0L)
+                        totalDurationMs =
+                            exoPlayer.duration.coerceAtLeast(0L)
+
                         playerError = null
-                        // Preload Start.io interstitial while current episode is actively playing
+
                         if (latestEpisodeNum < latestTotalEpisodes) {
                             StartIoAdManager.controller.preloadIfNeeded(context)
                         }
                     }
+
                     Player.STATE_ENDED -> {
                         isBuffering = false
-                        val hasNext = latestEpisodeNum < latestTotalEpisodes
+
+                        val hasNext =
+                            latestEpisodeNum < latestTotalEpisodes
+
                         if (hasNext) {
                             StartIoAdManager.controller.onEpisodeEnded(
                                 context = context,
                                 sessionToken = latestSessionToken,
                                 hasNextEpisode = true,
                                 onProceedNextEpisode = {
-                                    latestOnSwitchEpisode(latestEpisodeNum + 1)
+                                    latestOnSwitchEpisode(
+                                        latestEpisodeNum + 1
+                                    )
                                 }
                             )
                         }
                     }
-                    Player.STATE_IDLE -> isBuffering = false
+
+                    Player.STATE_IDLE -> {
+                        isBuffering = false
+                    }
                 }
             }
 
             override fun onPlayerError(error: PlaybackException) {
                 isBuffering = false
-                playerError = "Video tidak dapat diputar. Silakan coba kembali."
+                playerError =
+                    "Video tidak dapat diputar. Silakan coba kembali."
             }
         }
+
         exoPlayer.addListener(listener)
 
         onDispose {
             StartIoAdManager.controller.cancelPendingTransition()
-            val pos = exoPlayer.currentPosition
-            val dur = exoPlayer.duration
-            latestOnSaveProgress(pos, dur)
+
+            latestOnSaveProgress(
+                exoPlayer.currentPosition,
+                exoPlayer.duration
+            )
+
             exoPlayer.removeListener(listener)
             exoPlayer.release()
         }
     }
 
-    // Probe actual video format and recreate MediaSource cleanly on episode change or retry
-    LaunchedEffect(playerState.videoSource, playerState.episodeNum, playerState.retryTrigger) {
+    LaunchedEffect(
+        playerState.videoSource,
+        playerState.episodeNum,
+        playerState.retryTrigger
+    ) {
         exoPlayer.stop()
         exoPlayer.clearMediaItems()
+
         isPlaying = false
         currentPositionMs = 0L
         totalDurationMs = 0L
@@ -197,12 +236,14 @@ fun PlayerScreen(
         playerError = null
 
         val source = playerState.videoSource
+
         if (source == null || source.videoUrl.isBlank()) {
             isProbing = false
             return@LaunchedEffect
         }
 
         isProbing = true
+
         try {
             val outcome = VideoFormatDetector.probe(
                 okHttpClient = NetworkClient.mediaOkHttpClient,
@@ -212,69 +253,102 @@ fun PlayerScreen(
 
             if (outcome.diagnostics.failureReason != null) {
                 isProbing = false
-                playerError = "Video tidak dapat diputar. Silakan coba kembali."
+                playerError =
+                    "Video tidak dapat diputar. Silakan coba kembali."
                 return@LaunchedEffect
             }
 
-            val mediaItem = MediaItem.fromUri(Uri.parse(source.videoUrl))
-            val mediaSource: MediaSource = when (outcome.diagnostics.detectedFormat) {
-                DetectedVideoFormat.HLS -> {
-                    HlsMediaSource.Factory(
-                        OkHttpDataSource.Factory(NetworkClient.mediaOkHttpClient)
-                    ).createMediaSource(mediaItem)
+            val mediaItem = MediaItem.fromUri(
+                Uri.parse(source.videoUrl)
+            )
+
+            val mediaSource: MediaSource =
+                when (outcome.diagnostics.detectedFormat) {
+
+                    DetectedVideoFormat.HLS -> {
+                        HlsMediaSource.Factory(
+                            OkHttpDataSource.Factory(
+                                NetworkClient.mediaOkHttpClient
+                            )
+                        ).createMediaSource(mediaItem)
+                    }
+
+                    DetectedVideoFormat.DASH -> {
+                        DashMediaSource.Factory(
+                            OkHttpDataSource.Factory(
+                                NetworkClient.mediaOkHttpClient
+                            )
+                        ).createMediaSource(mediaItem)
+                    }
+
+                    DetectedVideoFormat.MP4_CENC -> {
+                        ProgressiveMediaSource.Factory(
+                            CencMp4DataSource.Factory(
+                                okHttpClient =
+                                    NetworkClient.mediaOkHttpClient,
+                                keyHex = source.decryptionKey
+                            ),
+                            DefaultExtractorsFactory()
+                        ).createMediaSource(mediaItem)
+                    }
+
+                    DetectedVideoFormat.MP4_PLAIN,
+                    DetectedVideoFormat.MPEG_TS -> {
+                        ProgressiveMediaSource.Factory(
+                            OkHttpDataSource.Factory(
+                                NetworkClient.mediaOkHttpClient
+                            ),
+                            DefaultExtractorsFactory()
+                        ).createMediaSource(mediaItem)
+                    }
+
+                    DetectedVideoFormat.INVALID_RESPONSE,
+                    DetectedVideoFormat.UNKNOWN -> {
+                        isProbing = false
+                        playerError =
+                            "Video tidak dapat diputar. Silakan coba kembali."
+                        return@LaunchedEffect
+                    }
                 }
-                DetectedVideoFormat.DASH -> {
-                    DashMediaSource.Factory(
-                        OkHttpDataSource.Factory(NetworkClient.mediaOkHttpClient)
-                    ).createMediaSource(mediaItem)
-                }
-                DetectedVideoFormat.MP4_CENC -> {
-                    ProgressiveMediaSource.Factory(
-                        CencMp4DataSource.Factory(
-                            okHttpClient = NetworkClient.mediaOkHttpClient,
-                            keyHex = source.decryptionKey
-                        ),
-                        DefaultExtractorsFactory()
-                    ).createMediaSource(mediaItem)
-                }
-                DetectedVideoFormat.MP4_PLAIN, DetectedVideoFormat.MPEG_TS -> {
-                    ProgressiveMediaSource.Factory(
-                        OkHttpDataSource.Factory(NetworkClient.mediaOkHttpClient),
-                        DefaultExtractorsFactory()
-                    ).createMediaSource(mediaItem)
-                }
-                DetectedVideoFormat.INVALID_RESPONSE, DetectedVideoFormat.UNKNOWN -> {
-                    isProbing = false
-                    playerError = "Video tidak dapat diputar. Silakan coba kembali."
-                    return@LaunchedEffect
-                }
-            }
 
             exoPlayer.setMediaSource(mediaSource)
             exoPlayer.prepare()
             exoPlayer.play()
+
         } catch (_: Exception) {
-            playerError = "Video tidak dapat diputar. Silakan coba kembali."
+            playerError =
+                "Video tidak dapat diputar. Silakan coba kembali."
         } finally {
             isProbing = false
         }
     }
 
-    // Periodic time & progress ticker
     LaunchedEffect(isPlaying) {
         while (isPlaying) {
             if (!isDraggingSlider) {
-                currentPositionMs = exoPlayer.currentPosition.coerceAtLeast(0L)
-                val dur = exoPlayer.duration.coerceAtLeast(1L)
-                totalDurationMs = dur
-                sliderPosition = (currentPositionMs.toFloat() / dur.toFloat()).coerceIn(0f, 1f)
-                onSaveProgress(currentPositionMs, totalDurationMs)
+                currentPositionMs =
+                    exoPlayer.currentPosition.coerceAtLeast(0L)
+
+                val duration =
+                    exoPlayer.duration.coerceAtLeast(1L)
+
+                totalDurationMs = duration
+
+                sliderPosition = (
+                    currentPositionMs.toFloat() /
+                        duration.toFloat()
+                    ).coerceIn(0f, 1f)
+
+                onSaveProgress(
+                    currentPositionMs,
+                    totalDurationMs
+                )
             }
+
             delay(1000)
         }
     }
 
-    // Auto-hide controls after 4 seconds
     LaunchedEffect(showControls, isPlaying) {
         if (showControls && isPlaying) {
             delay(4000)
@@ -284,7 +358,12 @@ fun PlayerScreen(
 
     BackHandler {
         StartIoAdManager.controller.cancelPendingTransition()
-        onSaveProgress(exoPlayer.currentPosition, exoPlayer.duration)
+
+        onSaveProgress(
+            exoPlayer.currentPosition,
+            exoPlayer.duration
+        )
+
         onBack()
     }
 
@@ -294,12 +373,12 @@ fun PlayerScreen(
             .background(Color.Black)
             .testTag("player_screen")
     ) {
-        // Video View
         AndroidView(
             factory = { ctx ->
                 PlayerView(ctx).apply {
                     player = exoPlayer
                     useController = false
+
                     layoutParams = FrameLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.MATCH_PARENT
@@ -316,13 +395,15 @@ fun PlayerScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
+                    interactionSource =
+                        remember { MutableInteractionSource() },
                     indication = null,
-                    onClick = { showControls = !showControls }
+                    onClick = {
+                        showControls = !showControls
+                    }
                 )
         )
 
-        // Loading Spinner
         if (playerState.isLoading || isProbing || isBuffering) {
             Box(
                 modifier = Modifier.fillMaxSize(),
@@ -335,9 +416,13 @@ fun PlayerScreen(
             }
         }
 
-        // Clean Error Overlay (no developer/technical details)
-        val errorToDisplay = playerError ?: playerState.errorMessage
-        if (errorToDisplay != null && !playerState.isLoading && !isProbing) {
+        val errorToDisplay =
+            playerError ?: playerState.errorMessage
+
+        if (errorToDisplay != null &&
+            !playerState.isLoading &&
+            !isProbing
+        ) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -351,7 +436,9 @@ fun PlayerScreen(
                     ErrorStateView(
                         message = errorToDisplay,
                         onRetry = {
-                            StartIoAdManager.controller.cancelPendingTransition()
+                            StartIoAdManager.controller
+                                .cancelPendingTransition()
+
                             exoPlayer.stop()
                             exoPlayer.clearMediaItems()
                             onRetry()
@@ -360,27 +447,45 @@ fun PlayerScreen(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
+                        horizontalArrangement =
+                            Arrangement.spacedBy(10.dp)
+                    ) {
                         if (playerState.episodeNum > 1) {
                             Button(
                                 onClick = {
-                                    StartIoAdManager.controller.cancelPendingTransition()
-                                    onSwitchEpisode(playerState.episodeNum - 1)
+                                    requestEpisodeChange(
+                                        playerState.episodeNum - 1
+                                    )
                                 },
-                                colors = ButtonDefaults.buttonColors(containerColor = NaraSurfaceVariant)
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = NaraSurfaceVariant
+                                )
                             ) {
-                                Text("Episode Sebelumnya", fontSize = 12.sp)
+                                Text(
+                                    "Episode Sebelumnya",
+                                    fontSize = 12.sp
+                                )
                             }
                         }
-                        if (playerState.episodeNum < playerState.totalEpisodes) {
+
+                        if (playerState.episodeNum <
+                            playerState.totalEpisodes
+                        ) {
                             Button(
                                 onClick = {
-                                    StartIoAdManager.controller.cancelPendingTransition()
-                                    onSwitchEpisode(playerState.episodeNum + 1)
+                                    requestEpisodeChange(
+                                        playerState.episodeNum + 1
+                                    )
                                 },
-                                colors = ButtonDefaults.buttonColors(containerColor = NaraSurfaceVariant)
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = NaraSurfaceVariant
+                                )
                             ) {
-                                Text("Episode Berikutnya", fontSize = 12.sp)
+                                Text(
+                                    "Episode Berikutnya",
+                                    fontSize = 12.sp
+                                )
                             }
                         }
                     }
@@ -388,7 +493,6 @@ fun PlayerScreen(
             }
         }
 
-        // Custom Overlay Controls
         AnimatedVisibility(
             visible = showControls,
             enter = fadeIn(),
@@ -396,30 +500,41 @@ fun PlayerScreen(
             modifier = Modifier.fillMaxSize()
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
-                // Top gradient bar
+
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(100.dp)
                         .background(
                             Brush.verticalGradient(
-                                listOf(Color.Black.copy(alpha = 0.8f), Color.Transparent)
+                                listOf(
+                                    Color.Black.copy(alpha = 0.8f),
+                                    Color.Transparent
+                                )
                             )
                         )
                 )
 
-                // Top Controls: Back, Title, Episode
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .statusBarsPadding()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                        .padding(
+                            horizontal = 16.dp,
+                            vertical = 8.dp
+                        ),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(
                         onClick = {
-                            StartIoAdManager.controller.cancelPendingTransition()
-                            onSaveProgress(exoPlayer.currentPosition, exoPlayer.duration)
+                            StartIoAdManager.controller
+                                .cancelPendingTransition()
+
+                            onSaveProgress(
+                                exoPlayer.currentPosition,
+                                exoPlayer.duration
+                            )
+
                             onBack()
                         },
                         modifier = Modifier
@@ -429,7 +544,8 @@ fun PlayerScreen(
                             .testTag("player_back_button")
                     ) {
                         Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            imageVector =
+                                Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Kembali",
                             tint = Color.White
                         )
@@ -437,7 +553,9 @@ fun PlayerScreen(
 
                     Spacer(modifier = Modifier.width(12.dp))
 
-                    Column(modifier = Modifier.weight(1f)) {
+                    Column(
+                        modifier = Modifier.weight(1f)
+                    ) {
                         Text(
                             text = drama?.title ?: "Pemutar NARA",
                             color = Color.White,
@@ -446,23 +564,28 @@ fun PlayerScreen(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
+
                         Text(
-                            text = "Episode ${playerState.episodeNum} dari ${playerState.totalEpisodes}",
+                            text =
+                                "Episode ${playerState.episodeNum} dari ${playerState.totalEpisodes}",
                             color = NaraGold,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.SemiBold
                         )
                     }
 
-                    // Quality Badge
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(4.dp))
                             .background(NaraPrimary.copy(alpha = 0.8f))
-                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                            .padding(
+                                horizontal = 8.dp,
+                                vertical = 3.dp
+                            )
                     ) {
                         Text(
-                            text = playerState.videoSource?.quality ?: "HD",
+                            text =
+                                playerState.videoSource?.quality ?: "HD",
                             color = Color.White,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold
@@ -470,16 +593,19 @@ fun PlayerScreen(
                     }
                 }
 
-                // Center Playback Controls: Rewind, Play/Pause, Forward
                 Row(
                     modifier = Modifier.align(Alignment.Center),
-                    horizontalArrangement = Arrangement.spacedBy(28.dp),
+                    horizontalArrangement =
+                        Arrangement.spacedBy(28.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Rewind 10s
                     IconButton(
                         onClick = {
-                            exoPlayer.seekTo((exoPlayer.currentPosition - 10000).coerceAtLeast(0L))
+                            exoPlayer.seekTo(
+                                (
+                                    exoPlayer.currentPosition - 10000
+                                    ).coerceAtLeast(0L)
+                            )
                         },
                         modifier = Modifier
                             .size(46.dp)
@@ -494,10 +620,13 @@ fun PlayerScreen(
                         )
                     }
 
-                    // Play / Pause Toggle
                     IconButton(
                         onClick = {
-                            if (isPlaying) exoPlayer.pause() else exoPlayer.play()
+                            if (isPlaying) {
+                                exoPlayer.pause()
+                            } else {
+                                exoPlayer.play()
+                            }
                         },
                         modifier = Modifier
                             .size(64.dp)
@@ -506,17 +635,30 @@ fun PlayerScreen(
                             .testTag("player_play_pause_button")
                     ) {
                         Icon(
-                            imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                            contentDescription = if (isPlaying) "Jeda" else "Putar",
+                            imageVector = if (isPlaying) {
+                                Icons.Default.Pause
+                            } else {
+                                Icons.Default.PlayArrow
+                            },
+                            contentDescription = if (isPlaying) {
+                                "Jeda"
+                            } else {
+                                "Putar"
+                            },
                             tint = Color.White,
                             modifier = Modifier.size(36.dp)
                         )
                     }
 
-                    // Forward 10s
                     IconButton(
                         onClick = {
-                            exoPlayer.seekTo((exoPlayer.currentPosition + 10000).coerceAtMost(exoPlayer.duration))
+                            exoPlayer.seekTo(
+                                (
+                                    exoPlayer.currentPosition + 10000
+                                    ).coerceAtMost(
+                                        exoPlayer.duration.coerceAtLeast(0L)
+                                    )
+                            )
                         },
                         modifier = Modifier
                             .size(46.dp)
@@ -532,74 +674,129 @@ fun PlayerScreen(
                     }
                 }
 
-                // Bottom gradient bar & controls
                 Column(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
                         .background(
                             Brush.verticalGradient(
-                                listOf(Color.Transparent, Color.Black.copy(alpha = 0.9f))
+                                listOf(
+                                    Color.Transparent,
+                                    Color.Black.copy(alpha = 0.9f)
+                                )
                             )
                         )
-                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                        .padding(
+                            horizontal = 16.dp,
+                            vertical = 12.dp
+                        )
                 ) {
-                    // Episode Quick Switcher
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        horizontalArrangement =
+                            Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Previous Episode Button
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
                                 .clip(RoundedCornerShape(6.dp))
-                                .background(if (playerState.episodeNum > 1) NaraSurfaceVariant else Color.Transparent)
-                                .clickable(enabled = playerState.episodeNum > 1) {
-                                    StartIoAdManager.controller.cancelPendingTransition()
-                                    onSwitchEpisode(playerState.episodeNum - 1)
+                                .background(
+                                    if (playerState.episodeNum > 1) {
+                                        NaraSurfaceVariant
+                                    } else {
+                                        Color.Transparent
+                                    }
+                                )
+                                .clickable(
+                                    enabled = playerState.episodeNum > 1
+                                ) {
+                                    requestEpisodeChange(
+                                        playerState.episodeNum - 1
+                                    )
                                 }
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                                .padding(
+                                    horizontal = 8.dp,
+                                    vertical = 4.dp
+                                )
                         ) {
                             Icon(
-                                imageVector = Icons.Default.SkipPrevious,
+                                imageVector =
+                                    Icons.Default.SkipPrevious,
                                 contentDescription = null,
-                                tint = if (playerState.episodeNum > 1) Color.White else Color.Gray,
+                                tint = if (playerState.episodeNum > 1) {
+                                    Color.White
+                                } else {
+                                    Color.Gray
+                                },
                                 modifier = Modifier.size(16.dp)
                             )
+
                             Spacer(modifier = Modifier.width(4.dp))
+
                             Text(
                                 text = "Ep Sebelumnya",
-                                color = if (playerState.episodeNum > 1) Color.White else Color.Gray,
+                                color = if (playerState.episodeNum > 1) {
+                                    Color.White
+                                } else {
+                                    Color.Gray
+                                },
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Medium
                             )
                         }
 
-                        // Next Episode Button
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
                                 .clip(RoundedCornerShape(6.dp))
-                                .background(if (playerState.episodeNum < playerState.totalEpisodes) NaraSurfaceVariant else Color.Transparent)
-                                .clickable(enabled = playerState.episodeNum < playerState.totalEpisodes) {
-                                    StartIoAdManager.controller.cancelPendingTransition()
-                                    onSwitchEpisode(playerState.episodeNum + 1)
+                                .background(
+                                    if (playerState.episodeNum <
+                                        playerState.totalEpisodes
+                                    ) {
+                                        NaraSurfaceVariant
+                                    } else {
+                                        Color.Transparent
+                                    }
+                                )
+                                .clickable(
+                                    enabled = playerState.episodeNum <
+                                        playerState.totalEpisodes
+                                ) {
+                                    requestEpisodeChange(
+                                        playerState.episodeNum + 1
+                                    )
                                 }
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                                .padding(
+                                    horizontal = 8.dp,
+                                    vertical = 4.dp
+                                )
                         ) {
                             Text(
                                 text = "Ep Berikutnya",
-                                color = if (playerState.episodeNum < playerState.totalEpisodes) Color.White else Color.Gray,
+                                color = if (playerState.episodeNum <
+                                    playerState.totalEpisodes
+                                ) {
+                                    Color.White
+                                } else {
+                                    Color.Gray
+                                },
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Medium
                             )
+
                             Spacer(modifier = Modifier.width(4.dp))
+
                             Icon(
                                 imageVector = Icons.Default.SkipNext,
                                 contentDescription = null,
-                                tint = if (playerState.episodeNum < playerState.totalEpisodes) Color.White else Color.Gray,
+                                tint = if (playerState.episodeNum <
+                                    playerState.totalEpisodes
+                                ) {
+                                    Color.White
+                                } else {
+                                    Color.Gray
+                                },
                                 modifier = Modifier.size(16.dp)
                             )
                         }
@@ -607,22 +804,26 @@ fun PlayerScreen(
 
                     Spacer(modifier = Modifier.height(6.dp))
 
-                    // Progress Slider
                     Slider(
                         value = sliderPosition,
-                        onValueChange = { pos ->
+                        onValueChange = { position ->
                             isDraggingSlider = true
-                            sliderPosition = pos
+                            sliderPosition = position
                         },
                         onValueChangeFinished = {
                             isDraggingSlider = false
-                            val seekToMs = (sliderPosition * totalDurationMs).toLong()
+
+                            val seekToMs =
+                                (sliderPosition * totalDurationMs)
+                                    .toLong()
+
                             exoPlayer.seekTo(seekToMs)
                         },
                         colors = SliderDefaults.colors(
                             thumbColor = NaraPrimary,
                             activeTrackColor = NaraPrimary,
-                            inactiveTrackColor = Color.White.copy(alpha = 0.3f)
+                            inactiveTrackColor =
+                                Color.White.copy(alpha = 0.3f)
                         ),
                         modifier = Modifier
                             .fillMaxWidth()
@@ -630,25 +831,32 @@ fun PlayerScreen(
                             .testTag("player_progress_slider")
                     )
 
-                    // Time and Fullscreen Row
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        horizontalArrangement =
+                            Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "${formatTime(currentPositionMs)} / ${formatTime(totalDurationMs)}",
+                            text =
+                                "${formatTime(currentPositionMs)} / ${formatTime(totalDurationMs)}",
                             color = Color.White,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Medium
                         )
 
                         IconButton(
-                            onClick = { isFullscreen = !isFullscreen },
+                            onClick = {
+                                isFullscreen = !isFullscreen
+                            },
                             modifier = Modifier.size(32.dp)
                         ) {
                             Icon(
-                                imageVector = if (isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
+                                imageVector = if (isFullscreen) {
+                                    Icons.Default.FullscreenExit
+                                } else {
+                                    Icons.Default.Fullscreen
+                                },
                                 contentDescription = "Layar Penuh",
                                 tint = Color.White,
                                 modifier = Modifier.size(20.dp)
@@ -665,5 +873,10 @@ private fun formatTime(millis: Long): String {
     val totalSeconds = (millis / 1000).coerceAtLeast(0)
     val minutes = totalSeconds / 60
     val seconds = totalSeconds % 60
-    return String.format("%02d:%02d", minutes, seconds)
+
+    return String.format(
+        "%02d:%02d",
+        minutes,
+        seconds
+    )
 }
