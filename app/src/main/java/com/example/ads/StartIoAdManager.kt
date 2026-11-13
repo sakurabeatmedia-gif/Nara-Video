@@ -1,3 +1,4 @@
+
 package com.example.ads
 
 import android.app.Activity
@@ -20,7 +21,12 @@ interface AdInstanceHandle {
 }
 
 interface InterstitialAdGateway {
-    fun initializeSdk(context: Context, appId: String, onInitialized: () -> Unit)
+    fun initializeSdk(
+        context: Context,
+        appId: String,
+        onInitialized: () -> Unit
+    )
+
     fun loadInterstitial(
         context: Context,
         onLoaded: (AdInstanceHandle) -> Unit,
@@ -29,11 +35,22 @@ interface InterstitialAdGateway {
 }
 
 class StartIoInterstitialGateway : InterstitialAdGateway {
-    override fun initializeSdk(context: Context, appId: String, onInitialized: () -> Unit) {
+
+    override fun initializeSdk(
+        context: Context,
+        appId: String,
+        onInitialized: () -> Unit
+    ) {
         StartAppSDK.initParams(context.applicationContext, appId)
             .setReturnAdsEnabled(false)
-            .setCallback { onInitialized() }
+            .setCallback {
+                onInitialized()
+            }
             .init()
+
+        // Aktifkan iklan percobaan selama pengujian.
+        StartAppSDK.setTestAdsEnabled(true)
+
         StartAppAd.disableAutoInterstitial()
     }
 
@@ -44,15 +61,19 @@ class StartIoInterstitialGateway : InterstitialAdGateway {
     ) {
         val hostContext = unwrapActivity(context) ?: context.applicationContext
         val startAppAd = StartAppAd(hostContext)
+
         startAppAd.loadAd(object : AdEventListener {
+
             override fun onReceiveAd(ad: Ad) {
                 val handle = object : AdInstanceHandle {
+
                     override fun show(
                         onDisplayed: () -> Unit,
                         onHidden: () -> Unit,
                         onNotDisplayed: () -> Unit
                     ): Boolean {
                         return startAppAd.showAd(object : AdDisplayListener {
+
                             override fun adHidden(ad: Ad) {
                                 onHidden()
                             }
@@ -62,7 +83,7 @@ class StartIoInterstitialGateway : InterstitialAdGateway {
                             }
 
                             override fun adClicked(ad: Ad) {
-                                // Click handled natively by SDK
+                                // Klik ditangani oleh SDK.
                             }
 
                             override fun adNotDisplayed(ad: Ad) {
@@ -71,6 +92,7 @@ class StartIoInterstitialGateway : InterstitialAdGateway {
                         })
                     }
                 }
+
                 onLoaded(handle)
             }
 
@@ -82,10 +104,12 @@ class StartIoInterstitialGateway : InterstitialAdGateway {
 
     private fun unwrapActivity(context: Context): Activity? {
         var current: Context? = context
+
         while (current is ContextWrapper) {
             if (current is Activity) return current
             current = current.baseContext
         }
+
         return null
     }
 }
@@ -94,6 +118,7 @@ class InterstitialAdController(
     private val gateway: InterstitialAdGateway = StartIoInterstitialGateway(),
     private val mainPoster: (Runnable) -> Unit = { runnable ->
         val mainLooper = Looper.getMainLooper()
+
         if (Looper.myLooper() == mainLooper) {
             runnable.run()
         } else {
@@ -101,6 +126,7 @@ class InterstitialAdController(
         }
     }
 ) {
+
     companion object {
         const val START_IO_APP_ID = "210355804"
     }
@@ -130,21 +156,33 @@ class InterstitialAdController(
 
     private var preloadedAd: AdInstanceHandle? = null
     private var activeSessionToken: Long = 0L
-    private var pendingContext: Context? = null
+    private var pendingPreloadContext: Context? = null
 
     fun initialize(context: Context) {
         if (isSdkInitialized || isSdkInitializing) return
+
         isSdkInitializing = true
-        pendingContext = context.applicationContext
+
         runCatching {
-            gateway.initializeSdk(context.applicationContext, START_IO_APP_ID) {
+            gateway.initializeSdk(
+                context.applicationContext,
+                START_IO_APP_ID
+            ) {
                 mainPoster(Runnable {
                     isSdkInitialized = true
                     isSdkInitializing = false
+
+                    val waitingContext = pendingPreloadContext
+                    pendingPreloadContext = null
+
+                    if (waitingContext != null) {
+                        preloadIfNeeded(waitingContext)
+                    }
                 })
             }
         }.onFailure {
             isSdkInitializing = false
+            pendingPreloadContext = null
         }
     }
 
@@ -163,22 +201,23 @@ class InterstitialAdController(
 
     fun preloadIfNeeded(context: Context) {
         if (!isSdkInitialized) {
+            pendingPreloadContext = context.applicationContext
             initialize(context)
+            return
         }
+
         if (isAdLoading || isAdReady || isAdShowing) return
 
         isAdLoading = true
-        val preloadToken = activeSessionToken
+
         runCatching {
             gateway.loadInterstitial(
                 context = context,
                 onLoaded = { handle ->
                     mainPoster(Runnable {
                         isAdLoading = false
-                        // Keep preloaded ad ready even across episode transitions
                         preloadedAd = handle
                         isAdReady = true
-                        val _unused = preloadToken
                     })
                 },
                 onFailed = {
@@ -197,8 +236,8 @@ class InterstitialAdController(
     }
 
     /**
-     * Triggered strictly on video playback ENDED event.
-     * Never triggered on pause, back navigation, or manual episode switching.
+     * Dipanggil ketika video episode benar-benar selesai.
+     * Tidak dipanggil ketika video dijeda atau pengguna kembali.
      */
     fun onEpisodeEnded(
         context: Context,
@@ -206,18 +245,16 @@ class InterstitialAdController(
         hasNextEpisode: Boolean,
         onProceedNextEpisode: () -> Unit
     ) {
-        if (!hasNextEpisode) {
-            return
-        }
-        if (sessionToken != activeSessionToken) {
-            return
-        }
-        if (isAdShowing || isAdProcessing) {
-            return
-        }
+        if (!hasNextEpisode) return
+
+        if (sessionToken != activeSessionToken) return
+
+        if (isAdShowing || isAdProcessing) return
 
         isAdProcessing = true
+
         val adToShow = preloadedAd
+
         if (adToShow == null || !isAdReady) {
             isAdProcessing = false
             isAdShowing = false
@@ -225,18 +262,20 @@ class InterstitialAdController(
             return
         }
 
-        // Consume preloaded ad reference before showing
         preloadedAd = null
         isAdReady = false
         isAdShowing = true
 
         var completed = false
+
         fun finishTransition() {
             mainPoster(Runnable {
                 if (completed) return@Runnable
+
                 completed = true
                 isAdShowing = false
                 isAdProcessing = false
+
                 if (sessionToken == activeSessionToken) {
                     onProceedNextEpisode()
                     preloadIfNeeded(context)
@@ -269,5 +308,7 @@ class InterstitialAdController(
 }
 
 object StartIoAdManager {
-    val controller: InterstitialAdController by lazy { InterstitialAdController() }
+    val controller: InterstitialAdController by lazy {
+        InterstitialAdController()
+    }
 }
