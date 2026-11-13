@@ -2,7 +2,6 @@ package com.example.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -38,7 +37,6 @@ import androidx.compose.ui.unit.sp
 import coil.compose.SubcomposeAsyncImage
 import coil.request.ImageRequest
 import com.example.model.Drama
-import com.example.model.DramaProvider
 import com.example.ui.theme.NaraGold
 import com.example.ui.theme.NaraPrimary
 import com.example.ui.theme.NaraSurface
@@ -53,15 +51,6 @@ fun DramaPosterCard(
     modifier: Modifier = Modifier,
     cardWidth: Dp = 125.dp
 ) {
-    val providerName = when (drama.provider) {
-        DramaProvider.MELOLO -> "MELOLO"
-        DramaProvider.DRAMABOX -> "DRAMABOX"
-        DramaProvider.DRAMAWAVE -> "DRAMAWAVE"
-        DramaProvider.REELSHORT -> "REELSHORT"
-        DramaProvider.DRAMABITE -> "DRAMABITE"
-        DramaProvider.GOODSHORT -> "GOODSHORT"
-    }
-
     Column(
         modifier = modifier
             .width(cardWidth)
@@ -102,7 +91,10 @@ fun DramaPosterCard(
                             .fillMaxSize()
                             .background(
                                 Brush.verticalGradient(
-                                    listOf(NaraSurfaceVariant, NaraSurface)
+                                    listOf(
+                                        NaraSurfaceVariant,
+                                        NaraSurface
+                                    )
                                 )
                             ),
                         contentAlignment = Alignment.Center
@@ -131,23 +123,12 @@ fun DramaPosterCard(
                     )
             )
 
-            // Platform source label
-            Box(
+            ProviderLabel(
+                provider = drama.provider,
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .padding(6.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(Color.Black.copy(alpha = 0.75f))
-                    .padding(horizontal = 6.dp, vertical = 3.dp)
-            ) {
-                Text(
-                    text = providerName,
-                    color = Color.White,
-                    fontSize = 8.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 0.3.sp
-                )
-            }
+            )
 
             if (drama.isPopular || drama.isLatest) {
                 Box(
@@ -156,13 +137,23 @@ fun DramaPosterCard(
                         .padding(6.dp)
                         .clip(RoundedCornerShape(4.dp))
                         .background(
-                            if (drama.isPopular) NaraPrimary
-                            else Color(0xFF059669)
+                            if (drama.isPopular) {
+                                NaraPrimary
+                            } else {
+                                Color(0xFF059669)
+                            }
                         )
-                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                        .padding(
+                            horizontal = 6.dp,
+                            vertical = 2.dp
+                        )
                 ) {
                     Text(
-                        text = if (drama.isPopular) "POPULER" else "BARU",
+                        text = if (drama.isPopular) {
+                            "POPULER"
+                        } else {
+                            "BARU"
+                        },
                         color = Color.White,
                         fontSize = 9.sp,
                         fontWeight = FontWeight.Bold,
@@ -178,7 +169,10 @@ fun DramaPosterCard(
                         .padding(6.dp)
                         .clip(RoundedCornerShape(4.dp))
                         .background(Color.Black.copy(alpha = 0.65f))
-                        .padding(horizontal = 5.dp, vertical = 2.dp)
+                        .padding(
+                            horizontal = 5.dp,
+                            vertical = 2.dp
+                        )
                 ) {
                     Text(
                         text = "${drama.totalEpisodes} Ep",
@@ -201,7 +195,9 @@ fun DramaPosterCard(
                     tint = NaraGold,
                     modifier = Modifier.size(11.dp)
                 )
+
                 Spacer(modifier = Modifier.width(2.dp))
+
                 Text(
                     text = drama.rating,
                     color = NaraTextPrimary,
