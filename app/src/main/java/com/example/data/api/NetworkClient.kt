@@ -30,25 +30,27 @@ object NetworkClient {
             .build()
     }
 
-    private val meloloRetrofit: Retrofit by lazy {
-        Retrofit.Builder()
-            .baseUrl(ApiConstants.MELOLO_BASE_URL)
+    private fun createRetrofit(baseUrl: String): Retrofit {
+        return Retrofit.Builder()
+            .baseUrl(baseUrl)
             .client(okHttpClient)
             .build()
     }
 
-    private val dramaBoxRetrofit: Retrofit by lazy {
-        Retrofit.Builder()
-            .baseUrl(ApiConstants.DRAMABOX_BASE_URL)
-            .client(okHttpClient)
-            .build()
+    private val meloloRetrofit by lazy {
+        createRetrofit(ApiConstants.MELOLO_BASE_URL)
     }
 
-    private val dramaWaveRetrofit: Retrofit by lazy {
-        Retrofit.Builder()
-            .baseUrl(ApiConstants.DRAMAWAVE_BASE_URL)
-            .client(okHttpClient)
-            .build()
+    private val dramaBoxRetrofit by lazy {
+        createRetrofit(ApiConstants.DRAMABOX_BASE_URL)
+    }
+
+    private val dramaWaveRetrofit by lazy {
+        createRetrofit(ApiConstants.DRAMAWAVE_BASE_URL)
+    }
+
+    private val reelShortRetrofit by lazy {
+        createRetrofit(ApiConstants.REELSHORT_BASE_URL)
     }
 
     val meloloService: MeloloApiService by lazy {
@@ -61,5 +63,9 @@ object NetworkClient {
 
     val dramaWaveService: DramaWaveApiService by lazy {
         dramaWaveRetrofit.create(DramaWaveApiService::class.java)
+    }
+
+    val reelShortService: ReelShortApiService by lazy {
+        reelShortRetrofit.create(ReelShortApiService::class.java)
     }
 }
