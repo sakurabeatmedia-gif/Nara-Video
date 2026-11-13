@@ -38,10 +38,9 @@ import androidx.compose.ui.unit.sp
 import coil.compose.SubcomposeAsyncImage
 import coil.request.ImageRequest
 import com.example.model.Drama
-import com.example.ui.theme.NaraBackground
+import com.example.model.DramaProvider
 import com.example.ui.theme.NaraGold
 import com.example.ui.theme.NaraPrimary
-import com.example.ui.theme.NaraPrimaryDark
 import com.example.ui.theme.NaraSurface
 import com.example.ui.theme.NaraSurfaceVariant
 import com.example.ui.theme.NaraTextPrimary
@@ -54,6 +53,15 @@ fun DramaPosterCard(
     modifier: Modifier = Modifier,
     cardWidth: Dp = 125.dp
 ) {
+    val providerName = when (drama.provider) {
+        DramaProvider.MELOLO -> "MELOLO"
+        DramaProvider.DRAMABOX -> "DRAMABOX"
+        DramaProvider.DRAMAWAVE -> "DRAMAWAVE"
+        DramaProvider.REELSHORT -> "REELSHORT"
+        DramaProvider.DRAMABITE -> "DRAMABITE"
+        DramaProvider.GOODSHORT -> "GOODSHORT"
+    }
+
     Column(
         modifier = modifier
             .width(cardWidth)
@@ -61,11 +69,10 @@ fun DramaPosterCard(
             .clickable(onClick = onClick)
             .testTag("drama_card_${drama.uniqueKey}")
     ) {
-        // Poster Box
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(0.72f) // Standard 3:4.1 poster ratio
+                .aspectRatio(0.72f)
                 .clip(RoundedCornerShape(10.dp))
                 .background(NaraSurfaceVariant)
         ) {
@@ -110,7 +117,6 @@ fun DramaPosterCard(
                 }
             )
 
-            // Gradient shadow on bottom of poster
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -125,14 +131,34 @@ fun DramaPosterCard(
                     )
             )
 
-            // Top-left label badge (Populer / Terbaru)
+            // Platform source label
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(6.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(Color.Black.copy(alpha = 0.75f))
+                    .padding(horizontal = 6.dp, vertical = 3.dp)
+            ) {
+                Text(
+                    text = providerName,
+                    color = Color.White,
+                    fontSize = 8.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.3.sp
+                )
+            }
+
             if (drama.isPopular || drama.isLatest) {
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopStart)
                         .padding(6.dp)
                         .clip(RoundedCornerShape(4.dp))
-                        .background(if (drama.isPopular) NaraPrimary else Color(0xFF059669))
+                        .background(
+                            if (drama.isPopular) NaraPrimary
+                            else Color(0xFF059669)
+                        )
                         .padding(horizontal = 6.dp, vertical = 2.dp)
                 ) {
                     Text(
@@ -145,7 +171,6 @@ fun DramaPosterCard(
                 }
             }
 
-            // Bottom-right episode count badge
             if (drama.totalEpisodes > 0) {
                 Box(
                     modifier = Modifier
@@ -164,7 +189,6 @@ fun DramaPosterCard(
                 }
             }
 
-            // Bottom-left rating badge
             Row(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
@@ -189,7 +213,6 @@ fun DramaPosterCard(
 
         Spacer(modifier = Modifier.height(6.dp))
 
-        // Title
         Text(
             text = drama.title,
             color = NaraTextPrimary,
