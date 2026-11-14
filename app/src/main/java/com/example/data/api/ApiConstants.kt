@@ -1,7 +1,5 @@
 package com.example.data.api
 
-import com.example.BuildConfig
-
 object ApiConstants {
 
     const val MELOLO_BASE_URL =
@@ -24,9 +22,9 @@ object ApiConstants {
 
     val API_KEYS: List<String>
         get() = listOf(
-            API_SHORT_KEY1=vbs_9ed0b6f5c576190b1f7bf32de09f705559933d757685b968
-            API_SHORT_KEY2=vbs_18bcfc98d4f1e813ffbcedeb62ec23b6b9743605e96a7520
-            API_SHORT_KEY3=vbs_776c1aa51441d41d189b4e0e5bcf0551ac3ef616f853e6ef
+            "vbs_9ed0b6f5c576190b1f7bf32de09f705559933d757685b968",
+            "vbs_18bcfc98d4f1e813ffbcedeb62ec23b6b9743605e96a7520",
+            "vbs_776c1aa51441d41d189b4e0e5bcf0551ac3ef616f853e6ef"
         ).map { it.trim() }.filter { it.isNotEmpty() }
 
     val API_KEY: String
