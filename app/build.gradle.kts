@@ -16,6 +16,7 @@ android {
     applicationId = "com.aistudio.nara.dracin"
     minSdk = 24
     targetSdk = 36
+    versionCode = 1
     versionCode = 1.0
     versionName = "3.8"
 
