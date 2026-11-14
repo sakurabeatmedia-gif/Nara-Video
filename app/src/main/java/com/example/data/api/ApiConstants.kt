@@ -13,8 +13,6 @@ object ApiConstants {
     const val GOODSHORT_BASE_URL =
         "https://apishort.com/v1/goodshort/"
 
-    // URL lama dipertahankan sementara agar file legacy
-    // tidak menyebabkan compilation error.
     const val DRAMABOX_BASE_URL =
         "https://apishort.com/v1/dramabox/api/dramabox/"
 
@@ -24,12 +22,15 @@ object ApiConstants {
     const val REELSHORT_BASE_URL =
         "https://apishort.com/v1/reelshort/"
 
-    val API_KEY: String
-        get() = BuildConfig.API_SHORT_KEY.trim()
-
-    // Kompatibilitas sementara dengan kode lama.
     val API_KEYS: List<String>
-        get() = listOf(API_KEY).filter { it.isNotBlank() }
+        get() = listOf(
+            BuildConfig.API_SHORT_KEY1,
+            BuildConfig.API_SHORT_KEY2,
+            BuildConfig.API_SHORT_KEY3
+        ).map { it.trim() }.filter { it.isNotEmpty() }
+
+    val API_KEY: String
+        get() = API_KEYS.firstOrNull().orEmpty()
 
     const val HEADER_API_KEY = "X-API-Key"
     const val HEADER_ACCEPT = "Accept"
