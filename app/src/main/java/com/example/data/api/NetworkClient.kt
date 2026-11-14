@@ -1,3 +1,4 @@
+
 package com.example.data.api
 
 import okhttp3.OkHttpClient
@@ -6,13 +7,17 @@ import java.util.concurrent.TimeUnit
 
 object NetworkClient {
 
+    // Menggunakan seluruh API key yang sudah tersimpan.
     val authManager: ApiAuthManager by lazy {
         ApiAuthManager(ApiConstants.API_KEYS)
     }
 
+    // Client utama dengan API key rotation interceptor.
     val okHttpClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
-            .addInterceptor(ApiShortInterceptor(authManager))
+            .addInterceptor(
+                ApiShortInterceptor(authManager)
+            )
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(25, TimeUnit.SECONDS)
             .writeTimeout(15, TimeUnit.SECONDS)
@@ -20,6 +25,7 @@ object NetworkClient {
             .build()
     }
 
+    // Client khusus media tanpa API key interceptor.
     val mediaOkHttpClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS)
@@ -30,6 +36,7 @@ object NetworkClient {
             .build()
     }
 
+    // Retrofit factory menggunakan client utama.
     private fun createRetrofit(baseUrl: String): Retrofit {
         return Retrofit.Builder()
             .baseUrl(baseUrl)
@@ -37,6 +44,7 @@ object NetworkClient {
             .build()
     }
 
+    // Retrofit instances.
     private val meloloRetrofit by lazy {
         createRetrofit(ApiConstants.MELOLO_BASE_URL)
     }
@@ -61,6 +69,7 @@ object NetworkClient {
         createRetrofit(ApiConstants.GOODSHORT_BASE_URL)
     }
 
+    // API services.
     val meloloService: MeloloApiService by lazy {
         meloloRetrofit.create(MeloloApiService::class.java)
     }
@@ -82,6 +91,6 @@ object NetworkClient {
     }
 
     val goodShortService: GoodShortApiService by lazy {
-        goodShortRetrofit.create(GoodShortApiService::class.java)
+        dramaBiteRetrofit.create(GoodShortApiService::class.java)
     }
 }
