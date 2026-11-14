@@ -1,7 +1,5 @@
 package com.example.data.api
 
-import com.example.BuildConfig
-
 object ApiConstants {
 
     const val MELOLO_BASE_URL =
@@ -22,9 +20,12 @@ object ApiConstants {
     const val REELSHORT_BASE_URL =
         "https://apishort.com/v1/reelshort/"
 
-    val API_KEYS: List<String>
-        get() = listOf(BuildConfig.API_SHORT_KEY)
-            .filter { it.isNotBlank() }
+    // API keys disalin dari ApiKeyManager.kt Nara-Final.
+    val API_KEYS: List<String> = listOf(
+        "vbs_9ed0b6f5c576190b1f7bf32de09f705559933d757685b968",
+        "vbs_18bcfc98d4f1e813ffbcedeb62ec23b6b9743605e96a7520",
+        "vbs_776c1aa51441d41d189b4e0e5bcf0551ac3ef616f853e6ef"
+    )
 
     const val HEADER_API_KEY = "X-API-Key"
     const val HEADER_ACCEPT = "Accept"
