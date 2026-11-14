@@ -47,7 +47,7 @@ class StartIoInterstitialGateway : InterstitialAdGateway {
             }
             .init()
 
-        StartAppSDK.setTestAdsEnabled(true)
+        StartAppSDK.setTestAdsEnabled(false)
         StartAppAd.disableAutoInterstitial()
     }
 
