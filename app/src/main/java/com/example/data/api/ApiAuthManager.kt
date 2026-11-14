@@ -6,29 +6,54 @@ import okhttp3.Response
 class ApiAuthManager(
     private val keys: List<String> = ApiConstants.API_KEYS
 ) {
-    private val primaryKey: String
+    private val apiKeys = keys
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
+        .distinct()
+
+    @Volatile
+    private var currentKeyIndex = 0
 
     init {
-        primaryKey = keys.firstOrNull()
-            ?.takeIf { it.isNotBlank() }
-            ?: throw IllegalStateException(
-                "API key belum dikonfigurasi."
-            )
+        require(apiKeys.isNotEmpty()) {
+            "API key belum dikonfigurasi."
+        }
     }
 
-    fun getCurrentKeyIndex(): Int = 0
+    @Synchronized
+    fun getCurrentKeyIndex(): Int = currentKeyIndex
 
-    fun getKeyAt(index: Int): String = primaryKey
+    fun getKeyAt(index: Int): String {
+        return apiKeys.getOrElse(index) {
+            throw IndexOutOfBoundsException("API key index tidak valid: $index")
+        }
+    }
 
-    fun keyCount(): Int = 1
+    fun keyCount(): Int = apiKeys.size
 
     @Synchronized
     fun nextKeyIndexOnAuthFailure(
         failedIndex: Int,
         triedIndices: Set<Int>
-    ): Int? = null
+    ): Int? {
+        if (apiKeys.isEmpty()) return null
 
-    fun resetToPrimary() = Unit
+        for (offset in 1..apiKeys.size) {
+            val nextIndex = (failedIndex + offset) % apiKeys.size
+
+            if (nextIndex !in triedIndices) {
+                currentKeyIndex = nextIndex
+                return nextIndex
+            }
+        }
+
+        return null
+    }
+
+    @Synchronized
+    fun resetToPrimary() {
+        currentKeyIndex = 0
+    }
 }
 
 class ApiShortInterceptor(
@@ -45,28 +70,58 @@ class ApiShortInterceptor(
     override fun intercept(chain: Interceptor.Chain): Response {
         val originalRequest = chain.request()
 
-        val signedRequest = originalRequest.newBuilder()
-            .header(
-                ApiConstants.HEADER_API_KEY,
-                authManager.getKeyAt(0)
-            )
-            .header(
-                ApiConstants.HEADER_ACCEPT,
-                ApiConstants.ACCEPT_JSON
-            )
-            .build()
+        val triedIndices = mutableSetOf<Int>()
+        var keyIndex = authManager.getCurrentKeyIndex()
 
-        var response = chain.proceed(signedRequest)
+        while (true) {
+            triedIndices.add(keyIndex)
 
-        if (response.code == 502 ||
-            response.code == 503 ||
-            response.code == 504
-        ) {
-            response.close()
-            sleepFn(800L)
-            response = chain.proceed(signedRequest)
+            val signedRequest = originalRequest.newBuilder()
+                .header(
+                    ApiConstants.HEADER_API_KEY,
+                    authManager.getKeyAt(keyIndex)
+                )
+                .header(
+                    ApiConstants.HEADER_ACCEPT,
+                    ApiConstants.ACCEPT_JSON
+                )
+                .build()
+
+            var response = chain.proceed(signedRequest)
+
+            var serverRetries = 0
+
+            while (
+                response.code in listOf(502, 503, 504) &&
+                serverRetries < 1
+            ) {
+                response.close()
+                sleepFn(800L)
+                serverRetries++
+
+                response = chain.proceed(signedRequest)
+            }
+
+            if (response.code == 401 || response.code == 403) {
+                val nextIndex = authManager.nextKeyIndexOnAuthFailure(
+                    failedIndex = keyIndex,
+                    triedIndices = triedIndices
+                )
+
+                if (nextIndex == null) {
+                    return response
+                }
+
+                response.close()
+                keyIndex = nextIndex
+                continue
+            }
+
+            if (response.isSuccessful) {
+                authManager.resetToPrimary()
+            }
+
+            return response
         }
-
-        return response
     }
 }
